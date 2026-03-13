@@ -7,6 +7,7 @@ import (
 
 	"github.com/free5gc/amf/internal/context"
 	"github.com/free5gc/amf/internal/logger"
+	ngap_message "github.com/free5gc/amf/internal/ngap/message"
 	"github.com/free5gc/openapi/models"
 	"github.com/free5gc/util/metrics/sbi"
 )
@@ -62,4 +63,81 @@ func (p *Processor) ProvideDomainSelectionInfoProcedure(ueContextID string, info
 	}
 
 	return ueContextInfo, nil
+}
+
+func (p *Processor) HandleEnableUeReachabilityRequest(c *gin.Context,
+	reqData models.EnableUeReachabilityReqData,
+) {
+	logger.MtLog.Info("Handle Enable UE Reachability Request")
+
+	ueContextID := c.Param("ueContextId")
+	rspData, problemDetails := p.EnableUeReachabilityProcedure(ueContextID, reqData)
+	if problemDetails != nil {
+		c.Set(sbi.IN_PB_DETAILS_CTX_STR, problemDetails.Cause)
+		c.JSON(int(problemDetails.Status), problemDetails)
+		return
+	}
+
+	c.JSON(http.StatusOK, rspData)
+}
+
+func (p *Processor) EnableUeReachabilityProcedure(ueContextID string,
+	reqData models.EnableUeReachabilityReqData,
+) (*models.EnableUeReachabilityRspData, *models.ProblemDetailsEnableUeReachability) {
+	amfSelf := context.GetSelf()
+
+	ue, ok := amfSelf.AmfUeFindByUeContextID(ueContextID)
+	if !ok {
+		logger.CtxLog.Warnf("AmfUe Context[%s] not found", ueContextID)
+		return nil, &models.ProblemDetailsEnableUeReachability{
+			Status: http.StatusNotFound,
+			Cause:  "CONTEXT_NOT_FOUND",
+		}
+	}
+
+	ue.Lock.Lock()
+	defer ue.Lock.Unlock()
+
+	rspData := &models.EnableUeReachabilityRspData{
+		Reachability:      successReachability(reqData.Reachability),
+		SupportedFeatures: reqData.SupportedFeatures,
+	}
+
+	if ue.CmConnect(models.AccessType__3_GPP_ACCESS) || ue.CmConnect(models.AccessType_NON_3_GPP_ACCESS) {
+		return rspData, nil
+	}
+
+	if !ue.State[models.AccessType__3_GPP_ACCESS].Is(context.Registered) {
+		return nil, &models.ProblemDetailsEnableUeReachability{
+			Status:         http.StatusGatewayTimeout,
+			Cause:          "UE_NOT_REACHABLE",
+			MaxWaitingTime: int32(amfSelf.T3513Cfg.ExpireTime / 1e9),
+		}
+	}
+
+	ue.SetOnGoing(models.AccessType__3_GPP_ACCESS, &context.OnGoing{
+		Procedure: context.OnGoingProcedurePaging,
+	})
+
+	pkg, err := ngap_message.BuildPaging(ue, nil, false)
+	if err != nil {
+		logger.MtLog.Errorf("Build Paging failed: %v", err)
+		return nil, &models.ProblemDetailsEnableUeReachability{
+			Status: http.StatusInternalServerError,
+			Cause:  "SYSTEM_FAILURE",
+			Detail: err.Error(),
+		}
+	}
+
+	ngap_message.SendPaging(ue, pkg)
+
+	return rspData, nil
+}
+
+func successReachability(requested models.UeReachability) models.UeReachability {
+	if requested != "" {
+		return requested
+	}
+
+	return models.UeReachability_REACHABLE
 }

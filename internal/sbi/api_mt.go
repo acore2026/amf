@@ -6,6 +6,9 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/free5gc/amf/internal/logger"
+	"github.com/free5gc/openapi"
+	"github.com/free5gc/openapi/models"
+	"github.com/free5gc/util/metrics/sbi"
 )
 
 func (s *Server) getMTRoutes() []Route {
@@ -44,8 +47,36 @@ func (s *Server) HTTPProvideDomainSelectionInfo(c *gin.Context) {
 }
 
 func (s *Server) HTTPEnableUeReachability(c *gin.Context) {
-	logger.MtLog.Warnf("Handle Enable Ue Reachability is not implemented.")
-	c.JSON(http.StatusNotImplemented, gin.H{})
+	var reqData models.EnableUeReachabilityReqData
+
+	requestBody, err := c.GetRawData()
+	if err != nil {
+		problemDetail := models.ProblemDetails{
+			Title:  "System failure",
+			Status: http.StatusInternalServerError,
+			Detail: err.Error(),
+			Cause:  "SYSTEM_FAILURE",
+		}
+		logger.MtLog.Errorf("Get Request Body error: %+v", err)
+		c.Set(sbi.IN_PB_DETAILS_CTX_STR, problemDetail.Cause)
+		c.JSON(http.StatusInternalServerError, problemDetail)
+		return
+	}
+
+	if err := openapi.Deserialize(&reqData, requestBody, applicationjson); err != nil {
+		problemDetail := reqbody + err.Error()
+		rsp := models.ProblemDetails{
+			Title:  "Malformed request syntax",
+			Status: http.StatusBadRequest,
+			Detail: problemDetail,
+		}
+		logger.MtLog.Errorln(problemDetail)
+		c.Set(sbi.IN_PB_DETAILS_CTX_STR, http.StatusText(http.StatusBadRequest))
+		c.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+
+	s.Processor().HandleEnableUeReachabilityRequest(c, reqData)
 }
 
 func (s *Server) HTTPEnableGroupReachability(c *gin.Context) {
