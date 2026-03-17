@@ -30,3 +30,5 @@ cscope.*
 
 # Local test/build cache
 .cache/
+.claude/settings.local.json
+SESSION_NOTES.md
