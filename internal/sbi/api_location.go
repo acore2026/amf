@@ -86,8 +86,36 @@ func (s *Server) HTTPProvideLocationInfo(c *gin.Context) {
 
 // ProvidePositioningInfo - Namf_Location ProvidePositioningInfo service Operation
 func (s *Server) HTTPProvidePositioningInfo(c *gin.Context) {
-	logger.LocationLog.Warnf("Handle Provide Positioning Info is not implemented.")
-	c.JSON(http.StatusNotImplemented, gin.H{})
+	var requestPosInfo models.RequestPosInfo
+
+	requestBody, err := c.GetRawData()
+	if err != nil {
+		problemDetail := models.ProblemDetails{
+			Title:  "System failure",
+			Status: http.StatusInternalServerError,
+			Detail: err.Error(),
+			Cause:  "SYSTEM_FAILURE",
+		}
+		logger.LocationLog.Errorf("Get Request Body error: %+v", err)
+		c.Set(sbi.IN_PB_DETAILS_CTX_STR, problemDetail.Cause)
+		c.JSON(http.StatusInternalServerError, problemDetail)
+		return
+	}
+
+	err = openapi.Deserialize(&requestPosInfo, requestBody, "application/json")
+	if err != nil {
+		problemDetail := "[Request Body] " + err.Error()
+		rsp := models.ProblemDetails{
+			Title:  "Malformed request syntax",
+			Status: http.StatusBadRequest,
+			Detail: problemDetail,
+		}
+		logger.LocationLog.Errorln(problemDetail)
+		c.Set(sbi.IN_PB_DETAILS_CTX_STR, http.StatusText(http.StatusBadRequest))
+		c.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+	s.Processor().HandleProvidePositioningInfoRequest(c, requestPosInfo)
 }
 
 func (s *Server) HTTPCancelLocation(c *gin.Context) {

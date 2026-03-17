@@ -73,3 +73,55 @@ func (p *Processor) ProvideLocationInfoProcedure(requestLocInfo models.RequestLo
 	}
 	return provideLocInfo, nil
 }
+
+func (p *Processor) HandleProvidePositioningInfoRequest(c *gin.Context, requestPosInfo models.RequestPosInfo) {
+	logger.ProducerLog.Info("Handle Provide Positioning Info Request")
+
+	ueContextID := c.Param("ueContextId")
+
+	providePosInfo, problemDetails := p.ProvidePositioningInfoProcedure(requestPosInfo, ueContextID)
+	if problemDetails != nil {
+		c.Set(sbi.IN_PB_DETAILS_CTX_STR, problemDetails.Cause)
+		c.JSON(int(problemDetails.Status), problemDetails)
+	} else {
+		c.JSON(http.StatusOK, providePosInfo)
+	}
+}
+
+func (p *Processor) ProvidePositioningInfoProcedure(requestPosInfo models.RequestPosInfo, ueContextID string) (
+	*models.ProvidePosInfo, *models.ProblemDetails,
+) {
+	amfSelf := context.GetSelf()
+
+	ue, ok := amfSelf.AmfUeFindByUeContextID(ueContextID)
+	if !ok {
+		logger.CtxLog.Warnf("AmfUe Context[%s] not found", ueContextID)
+		problemDetails := &models.ProblemDetails{
+			Status: http.StatusNotFound,
+			Cause:  "CONTEXT_NOT_FOUND",
+		}
+		return nil, problemDetails
+	}
+
+	ue.Lock.Lock()
+	defer ue.Lock.Unlock()
+
+	anType := ue.GetAnType()
+	if anType == "" {
+		problemDetails := &models.ProblemDetails{
+			Status: http.StatusNotFound,
+			Cause:  "CONTEXT_NOT_FOUND",
+		}
+		return nil, problemDetails
+	}
+
+	providePosInfo := new(models.ProvidePosInfo)
+	if ue.Location.NrLocation != nil {
+		providePosInfo.Ncgi = ue.Location.NrLocation.Ncgi
+	}
+	if ue.Location.EutraLocation != nil {
+		providePosInfo.Ecgi = ue.Location.EutraLocation.Ecgi
+	}
+
+	return providePosInfo, nil
+}
