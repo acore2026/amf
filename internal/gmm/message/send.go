@@ -3,12 +3,12 @@ package message
 import (
 	"fmt"
 
-	"github.com/free5gc/amf/internal/context"
-	gmm_common "github.com/free5gc/amf/internal/gmm/common"
-	"github.com/free5gc/amf/internal/logger"
-	ngap_message "github.com/free5gc/amf/internal/ngap/message"
-	callback "github.com/free5gc/amf/internal/sbi/processor/notifier"
-	"github.com/free5gc/nas/nasMessage"
+	"github.com/acore/amf/internal/context"
+	gmm_common "github.com/acore/amf/internal/gmm/common"
+	"github.com/acore/amf/internal/logger"
+	ngap_message "github.com/acore/amf/internal/ngap/message"
+	callback "github.com/acore/amf/internal/sbi/processor/notifier"
+	"github.com/acore2026/nas/nasMessage"
 	"github.com/free5gc/ngap/ngapType"
 	"github.com/free5gc/openapi/models"
 	nasMetrics "github.com/free5gc/util/metrics/nas"

@@ -3,10 +3,10 @@ package message
 import (
 	"time"
 
-	"github.com/free5gc/amf/internal/context"
-	"github.com/free5gc/amf/internal/logger"
-	business_metrics "github.com/free5gc/amf/internal/metrics/business"
-	callback "github.com/free5gc/amf/internal/sbi/processor/notifier"
+	"github.com/acore/amf/internal/context"
+	"github.com/acore/amf/internal/logger"
+	business_metrics "github.com/acore/amf/internal/metrics/business"
+	callback "github.com/acore/amf/internal/sbi/processor/notifier"
 	"github.com/free5gc/aper"
 	"github.com/free5gc/ngap/ngapType"
 	"github.com/free5gc/openapi/models"

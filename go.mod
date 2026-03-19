@@ -1,14 +1,12 @@
-module github.com/free5gc/amf
+module github.com/acore/amf
 
 go 1.25.5
 
-replace github.com/free5gc/nas => ../nas
-
 require (
+	github.com/acore2026/nas v0.0.0-20260313070035-3c2891487c8e
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/davecgh/go-spew v1.1.1
 	github.com/free5gc/aper v1.1.0
-	github.com/free5gc/nas v1.2.2
 	github.com/free5gc/ngap v1.1.2
 	github.com/free5gc/openapi v1.2.3
 	github.com/free5gc/sctp v1.1.1
@@ -24,6 +22,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v2 v2.27.7
 	go.uber.org/mock v0.4.0
+	golang.org/x/net v0.47.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 
@@ -37,6 +36,7 @@ require (
 	github.com/cloudwego/iasm v0.2.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/free5gc/nas v1.2.2 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
@@ -76,10 +76,11 @@ require (
 	go.opentelemetry.io/otel/trace v1.24.0 // indirect
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/crypto v0.45.0 // indirect
-	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	google.golang.org/protobuf v1.36.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/acore2026/nas => /home/acore/proj/go/nas

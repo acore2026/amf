@@ -8,10 +8,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	amf_context "github.com/free5gc/amf/internal/context"
-	"github.com/free5gc/amf/internal/sbi/consumer"
-	"github.com/free5gc/amf/internal/sbi/processor"
-	"github.com/free5gc/amf/pkg/factory"
+	amf_context "github.com/acore/amf/internal/context"
+	"github.com/acore/amf/internal/sbi/consumer"
+	"github.com/acore/amf/internal/sbi/processor"
+	"github.com/acore/amf/pkg/factory"
 	"github.com/free5gc/openapi/models"
 )
 

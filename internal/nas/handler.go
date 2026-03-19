@@ -3,11 +3,11 @@ package nas
 import (
 	"fmt"
 
-	amf_context "github.com/free5gc/amf/internal/context"
-	gmm_common "github.com/free5gc/amf/internal/gmm/common"
-	"github.com/free5gc/amf/internal/logger"
-	"github.com/free5gc/amf/internal/nas/nas_security"
-	"github.com/free5gc/nas"
+	amf_context "github.com/acore/amf/internal/context"
+	gmm_common "github.com/acore/amf/internal/gmm/common"
+	"github.com/acore/amf/internal/logger"
+	"github.com/acore/amf/internal/nas/nas_security"
+	"github.com/acore2026/nas"
 	nas_metrics "github.com/free5gc/util/metrics/nas"
 )
 

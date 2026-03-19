@@ -3,9 +3,9 @@ package message
 import (
 	"encoding/hex"
 
-	"github.com/free5gc/amf/internal/context"
-	"github.com/free5gc/amf/internal/logger"
-	"github.com/free5gc/amf/internal/util"
+	"github.com/acore/amf/internal/context"
+	"github.com/acore/amf/internal/logger"
+	"github.com/acore/amf/internal/util"
 	"github.com/free5gc/ngap/ngapConvert"
 	"github.com/free5gc/ngap/ngapType"
 	"github.com/free5gc/openapi/models"

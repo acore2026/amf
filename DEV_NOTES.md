@@ -27,7 +27,7 @@ GOCACHE=/home/acore/proj/go/amf/.cache/gocache GOFLAGS=-buildvcs=false go test .
 - During local development, AMF is pinned to the forked NAS repo with:
 
 ```go
-replace github.com/free5gc/nas => ../nas
+replace github.com/acore2026/nas => ../nas
 ```
 
 - Active NAS repo: `/home/acore/proj/go/nas`

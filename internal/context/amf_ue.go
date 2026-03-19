@@ -12,12 +12,12 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/free5gc/amf/internal/logger"
-	business_metrics "github.com/free5gc/amf/internal/metrics/business"
-	"github.com/free5gc/amf/pkg/factory"
-	"github.com/free5gc/nas/nasMessage"
-	"github.com/free5gc/nas/nasType"
-	"github.com/free5gc/nas/security"
+	"github.com/acore/amf/internal/logger"
+	business_metrics "github.com/acore/amf/internal/metrics/business"
+	"github.com/acore/amf/pkg/factory"
+	"github.com/acore2026/nas/nasMessage"
+	"github.com/acore2026/nas/nasType"
+	"github.com/acore2026/nas/security"
 	"github.com/free5gc/openapi"
 	"github.com/free5gc/openapi/models"
 	"github.com/free5gc/util/fsm"

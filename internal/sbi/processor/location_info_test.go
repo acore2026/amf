@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 
-	"github.com/free5gc/amf/internal/context"
-	"github.com/free5gc/amf/internal/sbi/consumer"
-	"github.com/free5gc/amf/internal/sbi/processor"
-	"github.com/free5gc/amf/pkg/app"
+	"github.com/acore/amf/internal/context"
+	"github.com/acore/amf/internal/sbi/consumer"
+	"github.com/acore/amf/internal/sbi/processor"
+	"github.com/acore/amf/pkg/app"
 	"github.com/free5gc/openapi/models"
 )
 

@@ -3,7 +3,7 @@ package consumer
 import (
 	"sync"
 
-	amf_context "github.com/free5gc/amf/internal/context"
+	amf_context "github.com/acore/amf/internal/context"
 	"github.com/free5gc/openapi"
 	"github.com/free5gc/openapi/models"
 	Nnssf_NSSelection "github.com/free5gc/openapi/nssf/NSSelection"

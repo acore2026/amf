@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/free5gc/amf/internal/logger"
+	"github.com/acore/amf/internal/logger"
 )
 
 // Task represents a work item to be processed by a worker.

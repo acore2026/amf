@@ -5,7 +5,7 @@ import (
 
 	"github.com/mohae/deepcopy"
 
-	"github.com/free5gc/amf/internal/logger"
+	"github.com/acore/amf/internal/logger"
 	"github.com/free5gc/openapi/models"
 )
 

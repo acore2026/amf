@@ -4,9 +4,9 @@ import (
 	"regexp"
 	"sync"
 
-	amf_context "github.com/free5gc/amf/internal/context"
-	"github.com/free5gc/amf/internal/logger"
-	"github.com/free5gc/amf/pkg/factory"
+	amf_context "github.com/acore/amf/internal/context"
+	"github.com/acore/amf/internal/logger"
+	"github.com/acore/amf/pkg/factory"
 	"github.com/free5gc/openapi"
 	"github.com/free5gc/openapi/models"
 	Npcf_AMPolicy "github.com/free5gc/openapi/pcf/AMPolicyControl"

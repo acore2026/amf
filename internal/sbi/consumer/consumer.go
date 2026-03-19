@@ -1,7 +1,7 @@
 package consumer
 
 import (
-	"github.com/free5gc/amf/pkg/app"
+	"github.com/acore/amf/pkg/app"
 	Namf_Communication "github.com/free5gc/openapi/amf/Communication"
 	Nausf_UEAuthentication "github.com/free5gc/openapi/ausf/UEAuthentication"
 	Nnrf_NFDiscovery "github.com/free5gc/openapi/nrf/NFDiscovery"

@@ -4,8 +4,8 @@ import (
 	"context"
 	"reflect"
 
-	amf_context "github.com/free5gc/amf/internal/context"
-	"github.com/free5gc/amf/internal/logger"
+	amf_context "github.com/acore/amf/internal/context"
+	"github.com/acore/amf/internal/logger"
 	Namf_Communication "github.com/free5gc/openapi/amf/Communication"
 	"github.com/free5gc/openapi/models"
 )

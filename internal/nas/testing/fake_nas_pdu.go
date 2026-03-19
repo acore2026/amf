@@ -6,11 +6,11 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/free5gc/nas"
-	"github.com/free5gc/nas/logger"
-	"github.com/free5gc/nas/nasConvert"
-	"github.com/free5gc/nas/nasMessage"
-	"github.com/free5gc/nas/nasType"
+	"github.com/acore2026/nas"
+	"github.com/acore2026/nas/logger"
+	"github.com/acore2026/nas/nasConvert"
+	"github.com/acore2026/nas/nasMessage"
+	"github.com/acore2026/nas/nasType"
 	"github.com/free5gc/openapi/models"
 )
 

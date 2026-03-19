@@ -1,9 +1,9 @@
 package gmm
 
 import (
-	"github.com/free5gc/amf/internal/context"
-	"github.com/free5gc/amf/internal/logger"
-	business_metrics "github.com/free5gc/amf/internal/metrics/business"
+	"github.com/acore/amf/internal/context"
+	"github.com/acore/amf/internal/logger"
+	business_metrics "github.com/acore/amf/internal/metrics/business"
 	"github.com/free5gc/util/fsm"
 )
 

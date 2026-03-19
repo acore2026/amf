@@ -2,9 +2,9 @@
 package ngap
 
 import (
-	"github.com/free5gc/amf/internal/context"
-	"github.com/free5gc/amf/internal/logger"
-	ngap_message "github.com/free5gc/amf/internal/ngap/message"
+	"github.com/acore/amf/internal/context"
+	"github.com/acore/amf/internal/logger"
+	ngap_message "github.com/acore/amf/internal/ngap/message"
 	"github.com/free5gc/ngap"
 	"github.com/free5gc/ngap/ngapType"
 	ngap_metrics "github.com/free5gc/util/metrics/ngap"

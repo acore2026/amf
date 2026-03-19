@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	amf_context "github.com/free5gc/amf/internal/context"
-	"github.com/free5gc/amf/internal/logger"
-	"github.com/free5gc/nas/nasType"
+	amf_context "github.com/acore/amf/internal/context"
+	"github.com/acore/amf/internal/logger"
+	"github.com/acore2026/nas/nasType"
 	"github.com/free5gc/openapi"
 	Nausf_UEAuthentication "github.com/free5gc/openapi/ausf/UEAuthentication"
 	"github.com/free5gc/openapi/models"

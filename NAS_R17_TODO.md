@@ -19,7 +19,7 @@
 
 - Active NAS repo: `/home/acore/proj/go/nas`
 - Active AMF repo: `/home/acore/proj/go/amf`
-- Current development wiring: `replace github.com/free5gc/nas => ../nas`
+- Current development wiring: `replace github.com/acore2026/nas => ../nas`
 - Relevant NAS message file: `/home/acore/proj/go/nas/nasMessage/NAS_ConfigurationUpdateCommand.go`
 - Spec-correct IEIs in `CONFIGURATION UPDATE COMMAND`:
   - `0x14` = Disaster roaming wait range

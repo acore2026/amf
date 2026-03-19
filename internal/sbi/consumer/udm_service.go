@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	amf_context "github.com/free5gc/amf/internal/context"
-	"github.com/free5gc/amf/pkg/factory"
+	amf_context "github.com/acore/amf/internal/context"
+	"github.com/acore/amf/pkg/factory"
 	"github.com/free5gc/openapi"
 	"github.com/free5gc/openapi/models"
 	Nudm_SubscriberDataManagement "github.com/free5gc/openapi/udm/SubscriberDataManagement"

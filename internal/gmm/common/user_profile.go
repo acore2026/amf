@@ -1,11 +1,11 @@
 package common
 
 import (
-	"github.com/free5gc/amf/internal/context"
-	"github.com/free5gc/amf/internal/logger"
-	business_metrics "github.com/free5gc/amf/internal/metrics/business"
-	ngap_message "github.com/free5gc/amf/internal/ngap/message"
-	"github.com/free5gc/amf/internal/sbi/consumer"
+	"github.com/acore/amf/internal/context"
+	"github.com/acore/amf/internal/logger"
+	business_metrics "github.com/acore/amf/internal/metrics/business"
+	ngap_message "github.com/acore/amf/internal/ngap/message"
+	"github.com/acore/amf/internal/sbi/consumer"
 	"github.com/free5gc/ngap/ngapType"
 	"github.com/free5gc/openapi/models"
 )
