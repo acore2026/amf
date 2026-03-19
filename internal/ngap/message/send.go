@@ -3,15 +3,15 @@ package message
 import (
 	"time"
 
-	"github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/logger"
-	business_metrics "github.com/acore/amf/internal/metrics/business"
-	callback "github.com/acore/amf/internal/sbi/processor/notifier"
-	"github.com/free5gc/aper"
-	"github.com/free5gc/ngap/ngapType"
-	"github.com/free5gc/openapi/models"
-	ngap_metrics "github.com/free5gc/util/metrics/ngap"
-	"github.com/free5gc/util/metrics/utils"
+	"github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/logger"
+	business_metrics "github.com/acore2026/amf/internal/metrics/business"
+	callback "github.com/acore2026/amf/internal/sbi/processor/notifier"
+	"github.com/acore2026/aper"
+	"github.com/acore2026/ngap/ngapType"
+	"github.com/acore2026/openapi/models"
+	ngap_metrics "github.com/acore2026/util/metrics/ngap"
+	"github.com/acore2026/util/metrics/utils"
 )
 
 var emptyCause = ngapType.Cause{Present: 0}

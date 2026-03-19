@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/acore/amf/internal/logger"
+	"github.com/acore2026/amf/internal/logger"
 )
 
 func TestRemoveAndRemoveAllRanUeRaceCondition(t *testing.T) {

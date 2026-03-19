@@ -10,9 +10,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 
-	"github.com/acore/amf/internal/util"
-	"github.com/free5gc/openapi"
-	"github.com/free5gc/openapi/models"
+	"github.com/acore2026/amf/internal/util"
+	"github.com/acore2026/openapi"
+	"github.com/acore2026/openapi/models"
 )
 
 const (

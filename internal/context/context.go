@@ -11,14 +11,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/acore/amf/internal/logger"
-	"github.com/acore/amf/pkg/factory"
-	"github.com/free5gc/nas/nasConvert"
-	"github.com/free5gc/nas/security"
-	"github.com/free5gc/openapi"
-	"github.com/free5gc/openapi/models"
-	"github.com/free5gc/openapi/oauth"
-	"github.com/free5gc/util/idgenerator"
+	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/amf/pkg/factory"
+	"github.com/acore2026/nas/nasConvert"
+	"github.com/acore2026/nas/security"
+	"github.com/acore2026/openapi"
+	"github.com/acore2026/openapi/models"
+	"github.com/acore2026/openapi/oauth"
+	"github.com/acore2026/util/idgenerator"
 )
 
 var (

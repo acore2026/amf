@@ -3,11 +3,11 @@ package ngap
 import (
 	"net"
 
-	"github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/logger"
-	"github.com/free5gc/ngap"
-	"github.com/free5gc/ngap/ngapType"
-	"github.com/free5gc/sctp"
+	"github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/ngap"
+	"github.com/acore2026/ngap/ngapType"
+	"github.com/acore2026/sctp"
 )
 
 func Dispatch(conn net.Conn, msg []byte) {

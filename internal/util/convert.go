@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/acore/amf/internal/logger"
-	"github.com/free5gc/openapi/models"
+	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/openapi/models"
 )
 
 func SnssaiHexToModels(hexString string) (*models.Snssai, error) {

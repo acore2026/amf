@@ -9,16 +9,16 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	amf_context "github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/logger"
-	amf_nas "github.com/acore/amf/internal/nas"
-	"github.com/acore/amf/internal/sbi/consumer"
-	"github.com/acore/amf/pkg/service"
-	"github.com/free5gc/nas"
-	"github.com/free5gc/nas/nasMessage"
-	"github.com/free5gc/nas/nasType"
-	"github.com/free5gc/ngap/ngapType"
-	"github.com/free5gc/openapi/models"
+	amf_context "github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/logger"
+	amf_nas "github.com/acore2026/amf/internal/nas"
+	"github.com/acore2026/amf/internal/sbi/consumer"
+	"github.com/acore2026/amf/pkg/service"
+	"github.com/acore2026/nas"
+	"github.com/acore2026/nas/nasMessage"
+	"github.com/acore2026/nas/nasType"
+	"github.com/acore2026/ngap/ngapType"
+	"github.com/acore2026/openapi/models"
 )
 
 func FuzzHandleNAS(f *testing.F) {

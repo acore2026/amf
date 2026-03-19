@@ -3,7 +3,7 @@ package util
 import (
 	"fmt"
 
-	"github.com/free5gc/openapi/models"
+	"github.com/acore2026/openapi/models"
 )
 
 func SearchNFServiceUri(nfProfile *models.NrfNfDiscoveryNfProfile, serviceName models.ServiceName,

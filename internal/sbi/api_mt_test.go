@@ -8,11 +8,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	amf_context "github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/sbi/consumer"
-	"github.com/acore/amf/internal/sbi/processor"
-	"github.com/acore/amf/pkg/factory"
-	"github.com/free5gc/openapi/models"
+	amf_context "github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/sbi/consumer"
+	"github.com/acore2026/amf/internal/sbi/processor"
+	"github.com/acore2026/amf/pkg/factory"
+	"github.com/acore2026/openapi/models"
 )
 
 type testAMFApp struct {

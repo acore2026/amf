@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/acore/amf/internal/logger"
+	"github.com/acore2026/amf/internal/logger"
 )
 
 // Timer can be used for retransmission, it will manage retry times automatically

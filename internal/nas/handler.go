@@ -3,12 +3,12 @@ package nas
 import (
 	"fmt"
 
-	amf_context "github.com/acore/amf/internal/context"
-	gmm_common "github.com/acore/amf/internal/gmm/common"
-	"github.com/acore/amf/internal/logger"
-	"github.com/acore/amf/internal/nas/nas_security"
-	"github.com/free5gc/nas"
-	nas_metrics "github.com/free5gc/util/metrics/nas"
+	amf_context "github.com/acore2026/amf/internal/context"
+	gmm_common "github.com/acore2026/amf/internal/gmm/common"
+	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/amf/internal/nas/nas_security"
+	"github.com/acore2026/nas"
+	nas_metrics "github.com/acore2026/util/metrics/nas"
 )
 
 func HandleNAS(ranUe *amf_context.RanUe, procedureCode int64, nasPdu []byte, initialMessage bool) {

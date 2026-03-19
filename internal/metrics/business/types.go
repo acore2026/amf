@@ -1,6 +1,6 @@
 package business
 
-import "github.com/free5gc/openapi/models"
+import "github.com/acore2026/openapi/models"
 
 // Global metric information
 const (

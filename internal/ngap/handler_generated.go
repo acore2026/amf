@@ -2,12 +2,12 @@
 package ngap
 
 import (
-	"github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/logger"
-	ngap_message "github.com/acore/amf/internal/ngap/message"
-	"github.com/free5gc/ngap"
-	"github.com/free5gc/ngap/ngapType"
-	ngap_metrics "github.com/free5gc/util/metrics/ngap"
+	"github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/logger"
+	ngap_message "github.com/acore2026/amf/internal/ngap/message"
+	"github.com/acore2026/ngap"
+	"github.com/acore2026/ngap/ngapType"
+	ngap_metrics "github.com/acore2026/util/metrics/ngap"
 )
 
 func handlerAMFConfigurationUpdate(ran *context.AmfRan, initiatingMessage *ngapType.InitiatingMessage) {

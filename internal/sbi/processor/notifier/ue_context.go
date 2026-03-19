@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	amf_context "github.com/acore/amf/internal/context"
-	Namf_Communication "github.com/free5gc/openapi/amf/Communication"
-	"github.com/free5gc/openapi/models"
+	amf_context "github.com/acore2026/amf/internal/context"
+	Namf_Communication "github.com/acore2026/openapi/amf/Communication"
+	"github.com/acore2026/openapi/models"
 )
 
 func SendN2InfoNotifyN2Handover(ue *amf_context.AmfUe, releaseList []int32) error {

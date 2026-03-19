@@ -12,17 +12,17 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/acore/amf/internal/logger"
-	business_metrics "github.com/acore/amf/internal/metrics/business"
-	"github.com/acore/amf/pkg/factory"
-	"github.com/free5gc/nas/nasMessage"
-	"github.com/free5gc/nas/nasType"
-	"github.com/free5gc/nas/security"
-	"github.com/free5gc/openapi"
-	"github.com/free5gc/openapi/models"
-	"github.com/free5gc/util/fsm"
-	"github.com/free5gc/util/idgenerator"
-	"github.com/free5gc/util/ueauth"
+	"github.com/acore2026/amf/internal/logger"
+	business_metrics "github.com/acore2026/amf/internal/metrics/business"
+	"github.com/acore2026/amf/pkg/factory"
+	"github.com/acore2026/nas/nasMessage"
+	"github.com/acore2026/nas/nasType"
+	"github.com/acore2026/nas/security"
+	"github.com/acore2026/openapi"
+	"github.com/acore2026/openapi/models"
+	"github.com/acore2026/util/fsm"
+	"github.com/acore2026/util/idgenerator"
+	"github.com/acore2026/util/ueauth"
 )
 
 type OnGoingProcedure string

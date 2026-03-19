@@ -1,16 +1,16 @@
 package consumer
 
 import (
-	"github.com/acore/amf/pkg/app"
-	Namf_Communication "github.com/free5gc/openapi/amf/Communication"
-	Nausf_UEAuthentication "github.com/free5gc/openapi/ausf/UEAuthentication"
-	Nnrf_NFDiscovery "github.com/free5gc/openapi/nrf/NFDiscovery"
-	Nnrf_NFManagement "github.com/free5gc/openapi/nrf/NFManagement"
-	Nnssf_NSSelection "github.com/free5gc/openapi/nssf/NSSelection"
-	Npcf_AMPolicy "github.com/free5gc/openapi/pcf/AMPolicyControl"
-	Nsmf_PDUSession "github.com/free5gc/openapi/smf/PDUSession"
-	Nudm_SubscriberDataManagement "github.com/free5gc/openapi/udm/SubscriberDataManagement"
-	Nudm_UEContextManagement "github.com/free5gc/openapi/udm/UEContextManagement"
+	"github.com/acore2026/amf/pkg/app"
+	Namf_Communication "github.com/acore2026/openapi/amf/Communication"
+	Nausf_UEAuthentication "github.com/acore2026/openapi/ausf/UEAuthentication"
+	Nnrf_NFDiscovery "github.com/acore2026/openapi/nrf/NFDiscovery"
+	Nnrf_NFManagement "github.com/acore2026/openapi/nrf/NFManagement"
+	Nnssf_NSSelection "github.com/acore2026/openapi/nssf/NSSelection"
+	Npcf_AMPolicy "github.com/acore2026/openapi/pcf/AMPolicyControl"
+	Nsmf_PDUSession "github.com/acore2026/openapi/smf/PDUSession"
+	Nudm_SubscriberDataManagement "github.com/acore2026/openapi/udm/SubscriberDataManagement"
+	Nudm_UEContextManagement "github.com/acore2026/openapi/udm/UEContextManagement"
 )
 
 var consumer *Consumer

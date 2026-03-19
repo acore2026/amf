@@ -1,8 +1,8 @@
 package processor
 
 import (
-	"github.com/acore/amf/internal/sbi/consumer"
-	"github.com/acore/amf/pkg/app"
+	"github.com/acore2026/amf/internal/sbi/consumer"
+	"github.com/acore2026/amf/pkg/app"
 )
 
 type ProcessorAmf interface {

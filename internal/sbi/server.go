@@ -12,17 +12,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
-	amf_context "github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/logger"
-	"github.com/acore/amf/internal/sbi/consumer"
-	"github.com/acore/amf/internal/sbi/processor"
-	util_oauth "github.com/acore/amf/internal/util"
-	"github.com/acore/amf/pkg/app"
-	"github.com/acore/amf/pkg/factory"
-	"github.com/free5gc/openapi/models"
-	"github.com/free5gc/util/httpwrapper"
-	logger_util "github.com/free5gc/util/logger"
-	"github.com/free5gc/util/metrics"
+	amf_context "github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/amf/internal/sbi/consumer"
+	"github.com/acore2026/amf/internal/sbi/processor"
+	util_oauth "github.com/acore2026/amf/internal/util"
+	"github.com/acore2026/amf/pkg/app"
+	"github.com/acore2026/amf/pkg/factory"
+	"github.com/acore2026/openapi/models"
+	"github.com/acore2026/util/httpwrapper"
+	logger_util "github.com/acore2026/util/logger"
+	"github.com/acore2026/util/metrics"
 )
 
 var (

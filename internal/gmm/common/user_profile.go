@@ -1,13 +1,13 @@
 package common
 
 import (
-	"github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/logger"
-	business_metrics "github.com/acore/amf/internal/metrics/business"
-	ngap_message "github.com/acore/amf/internal/ngap/message"
-	"github.com/acore/amf/internal/sbi/consumer"
-	"github.com/free5gc/ngap/ngapType"
-	"github.com/free5gc/openapi/models"
+	"github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/logger"
+	business_metrics "github.com/acore2026/amf/internal/metrics/business"
+	ngap_message "github.com/acore2026/amf/internal/ngap/message"
+	"github.com/acore2026/amf/internal/sbi/consumer"
+	"github.com/acore2026/ngap/ngapType"
+	"github.com/acore2026/openapi/models"
 )
 
 func RemoveAmfUe(ue *context.AmfUe, notifyNF bool) {

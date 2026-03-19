@@ -3,12 +3,12 @@ package message
 import (
 	"encoding/hex"
 
-	"github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/logger"
-	"github.com/acore/amf/internal/util"
-	"github.com/free5gc/ngap/ngapConvert"
-	"github.com/free5gc/ngap/ngapType"
-	"github.com/free5gc/openapi/models"
+	"github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/amf/internal/util"
+	"github.com/acore2026/ngap/ngapConvert"
+	"github.com/acore2026/ngap/ngapType"
+	"github.com/acore2026/openapi/models"
 )
 
 func AppendPDUSessionResourceSetupListSUReq(list *ngapType.PDUSessionResourceSetupListSUReq,

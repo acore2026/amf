@@ -1,8 +1,8 @@
 package common
 
 import (
-	"github.com/acore/amf/internal/context"
-	"github.com/free5gc/openapi/models"
+	"github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/openapi/models"
 )
 
 func StopAll5GSMMTimers(ue *context.AmfUe) {

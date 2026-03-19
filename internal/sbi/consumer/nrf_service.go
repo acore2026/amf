@@ -7,15 +7,15 @@ import (
 	"sync"
 	"time"
 
-	amf_context "github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/logger"
-	"github.com/acore/amf/internal/util"
-	"github.com/acore/amf/pkg/factory"
-	"github.com/free5gc/openapi"
-	"github.com/free5gc/openapi/models"
-	Nnrf_NFDiscovery "github.com/free5gc/openapi/nrf/NFDiscovery"
-	Nnrf_NFManagement "github.com/free5gc/openapi/nrf/NFManagement"
-	sbi_metrics "github.com/free5gc/util/metrics/sbi"
+	amf_context "github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/amf/internal/util"
+	"github.com/acore2026/amf/pkg/factory"
+	"github.com/acore2026/openapi"
+	"github.com/acore2026/openapi/models"
+	Nnrf_NFDiscovery "github.com/acore2026/openapi/nrf/NFDiscovery"
+	Nnrf_NFManagement "github.com/acore2026/openapi/nrf/NFManagement"
+	sbi_metrics "github.com/acore2026/util/metrics/sbi"
 )
 
 type nnrfService struct {

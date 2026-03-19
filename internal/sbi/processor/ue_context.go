@@ -8,13 +8,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/acore/amf/internal/context"
-	gmm_common "github.com/acore/amf/internal/gmm/common"
-	"github.com/acore/amf/internal/logger"
-	"github.com/acore/amf/internal/nas/nas_security"
-	"github.com/free5gc/nas/security"
-	"github.com/free5gc/openapi/models"
-	"github.com/free5gc/util/metrics/sbi"
+	"github.com/acore2026/amf/internal/context"
+	gmm_common "github.com/acore2026/amf/internal/gmm/common"
+	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/amf/internal/nas/nas_security"
+	"github.com/acore2026/nas/security"
+	"github.com/acore2026/openapi/models"
+	"github.com/acore2026/util/metrics/sbi"
 )
 
 // TS 29.518 5.2.2.2.3

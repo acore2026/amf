@@ -8,12 +8,12 @@ import (
 	"reflect"
 	"testing"
 
-	amf_context "github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/logger"
-	"github.com/acore/amf/internal/nas/nas_security"
-	"github.com/free5gc/nas"
-	"github.com/free5gc/nas/security"
-	"github.com/free5gc/openapi/models"
+	amf_context "github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/amf/internal/nas/nas_security"
+	"github.com/acore2026/nas"
+	"github.com/acore2026/nas/security"
+	"github.com/acore2026/openapi/models"
 )
 
 func FuzzNASSecurity(f *testing.F) {

@@ -8,13 +8,13 @@ import (
 	"strings"
 	"sync"
 
-	amf_context "github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/logger"
-	"github.com/free5gc/nas/nasType"
-	"github.com/free5gc/openapi"
-	Nausf_UEAuthentication "github.com/free5gc/openapi/ausf/UEAuthentication"
-	"github.com/free5gc/openapi/models"
-	sbi_metrics "github.com/free5gc/util/metrics/sbi"
+	amf_context "github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/nas/nasType"
+	"github.com/acore2026/openapi"
+	Nausf_UEAuthentication "github.com/acore2026/openapi/ausf/UEAuthentication"
+	"github.com/acore2026/openapi/models"
+	sbi_metrics "github.com/acore2026/util/metrics/sbi"
 )
 
 type nausfService struct {

@@ -10,17 +10,17 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/require"
 
-	amf_context "github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/logger"
-	nastesting "github.com/acore/amf/internal/nas/testing"
-	ngaptesting "github.com/acore/amf/internal/ngap/testing"
-	"github.com/acore/amf/pkg/factory"
-	"github.com/free5gc/aper"
-	"github.com/free5gc/nas/nasMessage"
-	"github.com/free5gc/nas/nasType"
-	"github.com/free5gc/ngap"
-	"github.com/free5gc/ngap/ngapType"
-	"github.com/free5gc/openapi/models"
+	amf_context "github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/logger"
+	nastesting "github.com/acore2026/amf/internal/nas/testing"
+	ngaptesting "github.com/acore2026/amf/internal/ngap/testing"
+	"github.com/acore2026/amf/pkg/factory"
+	"github.com/acore2026/aper"
+	"github.com/acore2026/nas/nasMessage"
+	"github.com/acore2026/nas/nasType"
+	"github.com/acore2026/ngap"
+	"github.com/acore2026/ngap/ngapType"
+	"github.com/acore2026/openapi/models"
 )
 
 func NewAmfRan(conn net.Conn) *amf_context.AmfRan {

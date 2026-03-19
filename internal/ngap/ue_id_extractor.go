@@ -1,9 +1,9 @@
 package ngap
 
 import (
-	"github.com/acore/amf/internal/logger"
-	"github.com/free5gc/ngap"
-	"github.com/free5gc/ngap/ngapType"
+	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/ngap"
+	"github.com/acore2026/ngap/ngapType"
 )
 
 // ExtractUEID performs lightweight NGAP message decoding to extract the UE identifier.

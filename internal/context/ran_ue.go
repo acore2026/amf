@@ -8,10 +8,10 @@ import (
 	"github.com/mohae/deepcopy"
 	"github.com/sirupsen/logrus"
 
-	"github.com/acore/amf/internal/logger"
-	"github.com/free5gc/ngap/ngapConvert"
-	"github.com/free5gc/ngap/ngapType"
-	"github.com/free5gc/openapi/models"
+	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/ngap/ngapConvert"
+	"github.com/acore2026/ngap/ngapType"
+	"github.com/acore2026/openapi/models"
 )
 
 type RelAction int

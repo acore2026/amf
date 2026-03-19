@@ -3,19 +3,19 @@ package gmm
 import (
 	"time"
 
-	"github.com/acore/amf/internal/context"
-	gmm_common "github.com/acore/amf/internal/gmm/common"
-	gmm_message "github.com/acore/amf/internal/gmm/message"
-	"github.com/acore/amf/internal/logger"
-	business_metrics "github.com/acore/amf/internal/metrics/business"
-	ngap_message "github.com/acore/amf/internal/ngap/message"
-	"github.com/acore/amf/internal/sbi/consumer"
-	"github.com/free5gc/nas"
-	"github.com/free5gc/nas/nasConvert"
-	"github.com/free5gc/nas/nasMessage"
-	"github.com/free5gc/ngap/ngapType"
-	"github.com/free5gc/openapi/models"
-	"github.com/free5gc/util/fsm"
+	"github.com/acore2026/amf/internal/context"
+	gmm_common "github.com/acore2026/amf/internal/gmm/common"
+	gmm_message "github.com/acore2026/amf/internal/gmm/message"
+	"github.com/acore2026/amf/internal/logger"
+	business_metrics "github.com/acore2026/amf/internal/metrics/business"
+	ngap_message "github.com/acore2026/amf/internal/ngap/message"
+	"github.com/acore2026/amf/internal/sbi/consumer"
+	"github.com/acore2026/nas"
+	"github.com/acore2026/nas/nasConvert"
+	"github.com/acore2026/nas/nasMessage"
+	"github.com/acore2026/ngap/ngapType"
+	"github.com/acore2026/openapi/models"
+	"github.com/acore2026/util/fsm"
 )
 
 func DeRegistered(state *fsm.State, event fsm.EventType, args fsm.ArgsType) {

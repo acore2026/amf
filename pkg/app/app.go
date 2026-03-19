@@ -1,8 +1,8 @@
 package app
 
 import (
-	amf_context "github.com/acore/amf/internal/context"
-	"github.com/acore/amf/pkg/factory"
+	amf_context "github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/pkg/factory"
 )
 
 type App interface {

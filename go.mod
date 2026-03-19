@@ -1,16 +1,16 @@
-module github.com/acore/amf
+module github.com/acore2026/amf
 
 go 1.25.5
 
 require (
+	github.com/acore2026/aper v1.1.1
+	github.com/acore2026/nas v1.2.3
+	github.com/acore2026/ngap v1.1.3
+	github.com/acore2026/openapi v1.2.4
+	github.com/acore2026/sctp v1.1.2
+	github.com/acore2026/util v1.3.2-0.20260204030658-79d56f347175
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/davecgh/go-spew v1.1.1
-	github.com/free5gc/aper v1.1.0
-	github.com/free5gc/nas v1.2.2
-	github.com/free5gc/ngap v1.1.2
-	github.com/free5gc/openapi v1.2.3
-	github.com/free5gc/sctp v1.1.1
-	github.com/free5gc/util v1.3.2-0.20260204030658-79d56f347175
 	github.com/gin-gonic/gin v1.10.0
 	github.com/google/uuid v1.6.0
 	github.com/mitchellh/mapstructure v1.5.0
@@ -25,8 +25,6 @@ require (
 	golang.org/x/net v0.47.0
 	gopkg.in/yaml.v2 v2.4.0
 )
-
-replace github.com/free5gc/nas => github.com/acore2026/nas v0.0.0-20260313070035-3c2891487c8e
 
 require (
 	github.com/aead/cmac v0.0.0-20160719120800-7af84192f0b1 // indirect
@@ -82,4 +80,18 @@ require (
 	golang.org/x/text v0.31.0 // indirect
 	google.golang.org/protobuf v1.36.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
+
+replace (
+	github.com/acore2026/aper => /tmp/acore-repos/aper
+	github.com/acore2026/chf => /tmp/acore-repos/chf
+	github.com/acore2026/go-gtp5gnl => /tmp/acore-repos/go-gtp5gnl
+	github.com/acore2026/ike => /tmp/acore-repos/ike
+	github.com/acore2026/nas => /tmp/acore-repos/nas
+	github.com/acore2026/ngap => /tmp/acore-repos/ngap
+	github.com/acore2026/openapi => /tmp/acore-repos/openapi
+	github.com/acore2026/pfcp => /tmp/acore-repos/pfcp
+	github.com/acore2026/sctp => /tmp/acore-repos/sctp
+	github.com/acore2026/tlv => /tmp/acore-repos/tlv
+	github.com/acore2026/util => /tmp/acore-repos/util
 )

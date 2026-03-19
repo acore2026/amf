@@ -1,10 +1,10 @@
 package gmm
 
 import (
-	"github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/logger"
-	business_metrics "github.com/acore/amf/internal/metrics/business"
-	"github.com/free5gc/util/fsm"
+	"github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/logger"
+	business_metrics "github.com/acore2026/amf/internal/metrics/business"
+	"github.com/acore2026/util/fsm"
 )
 
 const (

@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/logger"
-	"github.com/acore/amf/internal/util"
-	"github.com/acore/amf/pkg/factory"
-	"github.com/free5gc/aper"
-	"github.com/free5gc/ngap"
-	"github.com/free5gc/ngap/ngapConvert"
-	"github.com/free5gc/ngap/ngapType"
-	"github.com/free5gc/openapi/models"
+	"github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/amf/internal/util"
+	"github.com/acore2026/amf/pkg/factory"
+	"github.com/acore2026/aper"
+	"github.com/acore2026/ngap"
+	"github.com/acore2026/ngap/ngapConvert"
+	"github.com/acore2026/ngap/ngapType"
+	"github.com/acore2026/openapi/models"
 )
 
 func BuildPDUSessionResourceReleaseCommand(ue *context.RanUe, nasPdu []byte,

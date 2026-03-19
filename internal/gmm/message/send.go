@@ -3,15 +3,15 @@ package message
 import (
 	"fmt"
 
-	"github.com/acore/amf/internal/context"
-	gmm_common "github.com/acore/amf/internal/gmm/common"
-	"github.com/acore/amf/internal/logger"
-	ngap_message "github.com/acore/amf/internal/ngap/message"
-	callback "github.com/acore/amf/internal/sbi/processor/notifier"
-	"github.com/free5gc/nas/nasMessage"
-	"github.com/free5gc/ngap/ngapType"
-	"github.com/free5gc/openapi/models"
-	nasMetrics "github.com/free5gc/util/metrics/nas"
+	"github.com/acore2026/amf/internal/context"
+	gmm_common "github.com/acore2026/amf/internal/gmm/common"
+	"github.com/acore2026/amf/internal/logger"
+	ngap_message "github.com/acore2026/amf/internal/ngap/message"
+	callback "github.com/acore2026/amf/internal/sbi/processor/notifier"
+	"github.com/acore2026/nas/nasMessage"
+	"github.com/acore2026/ngap/ngapType"
+	"github.com/acore2026/openapi/models"
+	nasMetrics "github.com/acore2026/util/metrics/nas"
 )
 
 // backOffTimerUint = 7 means backoffTimer is null

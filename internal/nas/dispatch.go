@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/gmm"
-	"github.com/acore/amf/internal/logger"
-	"github.com/free5gc/nas"
-	"github.com/free5gc/openapi/models"
-	"github.com/free5gc/util/fsm"
+	"github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/gmm"
+	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/nas"
+	"github.com/acore2026/openapi/models"
+	"github.com/acore2026/util/fsm"
 )
 
 func Dispatch(ue *context.AmfUe, accessType models.AccessType, procedureCode int64, msg *nas.Message) error {

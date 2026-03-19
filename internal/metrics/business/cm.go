@@ -3,8 +3,8 @@ package business
 import (
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/free5gc/openapi/models"
-	"github.com/free5gc/util/metrics/utils"
+	"github.com/acore2026/openapi/models"
+	"github.com/acore2026/util/metrics/utils"
 )
 
 // ueCmStateGauge Connection Management different state (either cm-idle or cm-connected) Gauge

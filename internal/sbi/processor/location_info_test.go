@@ -7,11 +7,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 
-	"github.com/acore/amf/internal/context"
-	"github.com/acore/amf/internal/sbi/consumer"
-	"github.com/acore/amf/internal/sbi/processor"
-	"github.com/acore/amf/pkg/app"
-	"github.com/free5gc/openapi/models"
+	"github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/sbi/consumer"
+	"github.com/acore2026/amf/internal/sbi/processor"
+	"github.com/acore2026/amf/pkg/app"
+	"github.com/acore2026/openapi/models"
 )
 
 type MockProcessorAmf struct {

@@ -12,10 +12,10 @@ package service
 import (
 	reflect "reflect"
 
-	context "github.com/acore/amf/internal/context"
-	consumer "github.com/acore/amf/internal/sbi/consumer"
-	processor "github.com/acore/amf/internal/sbi/processor"
-	factory "github.com/acore/amf/pkg/factory"
+	context "github.com/acore2026/amf/internal/context"
+	consumer "github.com/acore2026/amf/internal/sbi/consumer"
+	processor "github.com/acore2026/amf/internal/sbi/processor"
+	factory "github.com/acore2026/amf/pkg/factory"
 	gomock "go.uber.org/mock/gomock"
 )
 

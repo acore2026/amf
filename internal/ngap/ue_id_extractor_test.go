@@ -6,9 +6,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/free5gc/aper"
-	"github.com/free5gc/ngap"
-	"github.com/free5gc/ngap/ngapType"
+	"github.com/acore2026/aper"
+	"github.com/acore2026/ngap"
+	"github.com/acore2026/ngap/ngapType"
 )
 
 func TestExtractUEID_InitialUEMessage(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/acore/amf/internal/logger"
+	"github.com/acore2026/amf/internal/logger"
 )
 
 // Task represents a work item to be processed by a worker.

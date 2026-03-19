@@ -6,16 +6,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/acore/amf/internal/context"
-	gmm_message "github.com/acore/amf/internal/gmm/message"
-	"github.com/acore/amf/internal/logger"
-	ngap_message "github.com/acore/amf/internal/ngap/message"
-	callback "github.com/acore/amf/internal/sbi/processor/notifier"
-	"github.com/free5gc/aper"
-	"github.com/free5gc/nas/nasMessage"
-	"github.com/free5gc/ngap/ngapType"
-	"github.com/free5gc/openapi/models"
-	"github.com/free5gc/util/metrics/sbi"
+	"github.com/acore2026/amf/internal/context"
+	gmm_message "github.com/acore2026/amf/internal/gmm/message"
+	"github.com/acore2026/amf/internal/logger"
+	ngap_message "github.com/acore2026/amf/internal/ngap/message"
+	callback "github.com/acore2026/amf/internal/sbi/processor/notifier"
+	"github.com/acore2026/aper"
+	"github.com/acore2026/nas/nasMessage"
+	"github.com/acore2026/ngap/ngapType"
+	"github.com/acore2026/openapi/models"
+	"github.com/acore2026/util/metrics/sbi"
 )
 
 // TS23502 4.2.3.3, 4.2.4.3, 4.3.2.2, 4.3.2.3, 4.3.3.2, 4.3.7

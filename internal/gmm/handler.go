@@ -15,27 +15,27 @@ import (
 	"github.com/mohae/deepcopy"
 	"github.com/pkg/errors"
 
-	"github.com/acore/amf/internal/context"
-	gmm_common "github.com/acore/amf/internal/gmm/common"
-	gmm_message "github.com/acore/amf/internal/gmm/message"
-	"github.com/acore/amf/internal/logger"
-	ngap_message "github.com/acore/amf/internal/ngap/message"
-	"github.com/acore/amf/internal/sbi/consumer"
-	callback "github.com/acore/amf/internal/sbi/processor/notifier"
-	"github.com/acore/amf/internal/util"
-	"github.com/acore/amf/pkg/factory"
-	"github.com/free5gc/nas"
-	"github.com/free5gc/nas/nasConvert"
-	"github.com/free5gc/nas/nasMessage"
-	"github.com/free5gc/nas/nasType"
-	"github.com/free5gc/nas/security"
-	"github.com/free5gc/ngap/ngapConvert"
-	"github.com/free5gc/ngap/ngapType"
-	"github.com/free5gc/openapi/models"
-	Nnrf_NFDiscovery "github.com/free5gc/openapi/nrf/NFDiscovery"
-	"github.com/free5gc/util/fsm"
-	nasMetrics "github.com/free5gc/util/metrics/nas"
-	"github.com/free5gc/util/validator"
+	"github.com/acore2026/amf/internal/context"
+	gmm_common "github.com/acore2026/amf/internal/gmm/common"
+	gmm_message "github.com/acore2026/amf/internal/gmm/message"
+	"github.com/acore2026/amf/internal/logger"
+	ngap_message "github.com/acore2026/amf/internal/ngap/message"
+	"github.com/acore2026/amf/internal/sbi/consumer"
+	callback "github.com/acore2026/amf/internal/sbi/processor/notifier"
+	"github.com/acore2026/amf/internal/util"
+	"github.com/acore2026/amf/pkg/factory"
+	"github.com/acore2026/nas"
+	"github.com/acore2026/nas/nasConvert"
+	"github.com/acore2026/nas/nasMessage"
+	"github.com/acore2026/nas/nasType"
+	"github.com/acore2026/nas/security"
+	"github.com/acore2026/ngap/ngapConvert"
+	"github.com/acore2026/ngap/ngapType"
+	"github.com/acore2026/openapi/models"
+	Nnrf_NFDiscovery "github.com/acore2026/openapi/nrf/NFDiscovery"
+	"github.com/acore2026/util/fsm"
+	nasMetrics "github.com/acore2026/util/metrics/nas"
+	"github.com/acore2026/util/validator"
 )
 
 const psiArraySize = 16
@@ -1653,7 +1653,7 @@ func HandleConfigurationUpdateComplete(ue *context.AmfUe,
 	// Stop timer T3555 in TS 24.501 Figure 5.4.4.1.1 in handler
 	ue.StopT3555()
 	// TODO: Send acknowledgment by Nudm_SMD_Info_Service to UDM in handler
-	//		import "github.com/free5gc/openapi/Nudm_SubscriberDataManagement" client.Info
+	//		import "github.com/acore2026/openapi/Nudm_SubscriberDataManagement" client.Info
 
 	return nil
 }

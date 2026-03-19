@@ -15,8 +15,8 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 
-	"github.com/acore/amf/internal/logger"
-	"github.com/free5gc/openapi/models"
+	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/openapi/models"
 )
 
 const (
