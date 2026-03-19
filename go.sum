@@ -1,3 +1,15 @@
+github.com/acore2026/aper v1.1.1 h1:hfAaOHL4OKlekEEbXs1Syw7Cu5PVtLLc1yE83JFU5sc=
+github.com/acore2026/aper v1.1.1/go.mod h1:uq9zNLrrp/9x5OLsbtDQwln2CxhGky2KTNI4T6ljFDI=
+github.com/acore2026/nas v1.2.3 h1:TjRo7jg9y11Z1lb7pldG0AKylj5IXLy8x1bVZpJjir4=
+github.com/acore2026/nas v1.2.3/go.mod h1:pmCsYa/CuXOJi/8bYtcIS+n3yif6h7CaI+YUC9tMKj4=
+github.com/acore2026/ngap v1.1.3 h1:R/DDMF3HgB6HyhWi+xWIkaVzG/8uuXc0L0pM1rre6WE=
+github.com/acore2026/ngap v1.1.3/go.mod h1:bXgz679VKptWuSQ88887CLKodJ/JmsqnJizoRMjyxcU=
+github.com/acore2026/openapi v1.2.4 h1:/VJ7JqSrtXYd4YLLneuaqP44GpoP68f2yjxOdwK77Vk=
+github.com/acore2026/openapi v1.2.4/go.mod h1:BkF9PK4MadF5/TijOlIllPRTzqWMCZUfqDKU1g+fHJo=
+github.com/acore2026/sctp v1.1.2 h1:e5T6Kmwt6pNowcoi9UfXBTKokJ1ktxAHrCt9HVZ5c88=
+github.com/acore2026/sctp v1.1.2/go.mod h1:jq6+F//4uAa/qn3bSYUTxfkKyYbPWBQzmxoQPcrAbGc=
+github.com/acore2026/util v1.3.2 h1:vvz+z3tWmbkxyz0/k3FIH7SvRVFrlilDpNKZTNsRheM=
+github.com/acore2026/util v1.3.2/go.mod h1:ueonzQ1Fwm/LkKYNdPVtEQv1wCD/m/NlSy+xXPa2bm8=
 github.com/aead/cmac v0.0.0-20160719120800-7af84192f0b1 h1:+JkXLHME8vLJafGhOH4aoV2Iu8bR55nU6iKMVfYVLjY=
 github.com/aead/cmac v0.0.0-20160719120800-7af84192f0b1/go.mod h1:nuudZmJhzWtx2212z+pkuy7B6nkBqa+xwNXZHL1j8cg=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 h1:DklsrG3dyBCFEj5IhUbnKptjxatkF07cF2ak3yi77so=
