@@ -10,7 +10,7 @@ import (
 
 	amf_context "github.com/acore/amf/internal/context"
 	"github.com/acore/amf/internal/logger"
-	"github.com/acore2026/nas/nasType"
+	"github.com/free5gc/nas/nasType"
 	"github.com/free5gc/openapi"
 	Nausf_UEAuthentication "github.com/free5gc/openapi/ausf/UEAuthentication"
 	"github.com/free5gc/openapi/models"

@@ -6,7 +6,7 @@ import (
 
 	amf_context "github.com/acore/amf/internal/context"
 	"github.com/acore/amf/internal/logger"
-	"github.com/acore2026/nas/nasMessage"
+	"github.com/free5gc/nas/nasMessage"
 	"github.com/free5gc/openapi"
 	Namf_Communication "github.com/free5gc/openapi/amf/Communication"
 	"github.com/free5gc/openapi/models"

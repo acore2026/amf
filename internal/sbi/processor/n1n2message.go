@@ -12,7 +12,7 @@ import (
 	ngap_message "github.com/acore/amf/internal/ngap/message"
 	callback "github.com/acore/amf/internal/sbi/processor/notifier"
 	"github.com/free5gc/aper"
-	"github.com/acore2026/nas/nasMessage"
+	"github.com/free5gc/nas/nasMessage"
 	"github.com/free5gc/ngap/ngapType"
 	"github.com/free5gc/openapi/models"
 	"github.com/free5gc/util/metrics/sbi"

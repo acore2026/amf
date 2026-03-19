@@ -8,7 +8,7 @@ import (
 	"github.com/acore/amf/internal/logger"
 	ngap_message "github.com/acore/amf/internal/ngap/message"
 	callback "github.com/acore/amf/internal/sbi/processor/notifier"
-	"github.com/acore2026/nas/nasMessage"
+	"github.com/free5gc/nas/nasMessage"
 	"github.com/free5gc/ngap/ngapType"
 	"github.com/free5gc/openapi/models"
 	nasMetrics "github.com/free5gc/util/metrics/nas"

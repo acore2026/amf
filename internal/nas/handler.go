@@ -7,7 +7,7 @@ import (
 	gmm_common "github.com/acore/amf/internal/gmm/common"
 	"github.com/acore/amf/internal/logger"
 	"github.com/acore/amf/internal/nas/nas_security"
-	"github.com/acore2026/nas"
+	"github.com/free5gc/nas"
 	nas_metrics "github.com/free5gc/util/metrics/nas"
 )
 

@@ -13,8 +13,8 @@ import (
 
 	"github.com/acore/amf/internal/logger"
 	"github.com/acore/amf/pkg/factory"
-	"github.com/acore2026/nas/nasConvert"
-	"github.com/acore2026/nas/security"
+	"github.com/free5gc/nas/nasConvert"
+	"github.com/free5gc/nas/security"
 	"github.com/free5gc/openapi"
 	"github.com/free5gc/openapi/models"
 	"github.com/free5gc/openapi/oauth"

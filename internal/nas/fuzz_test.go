@@ -14,9 +14,9 @@ import (
 	amf_nas "github.com/acore/amf/internal/nas"
 	"github.com/acore/amf/internal/sbi/consumer"
 	"github.com/acore/amf/pkg/service"
-	"github.com/acore2026/nas"
-	"github.com/acore2026/nas/nasMessage"
-	"github.com/acore2026/nas/nasType"
+	"github.com/free5gc/nas"
+	"github.com/free5gc/nas/nasMessage"
+	"github.com/free5gc/nas/nasType"
 	"github.com/free5gc/ngap/ngapType"
 	"github.com/free5gc/openapi/models"
 )

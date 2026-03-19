@@ -11,8 +11,8 @@ import (
 	amf_context "github.com/acore/amf/internal/context"
 	"github.com/acore/amf/internal/logger"
 	"github.com/acore/amf/internal/nas/nas_security"
-	"github.com/acore2026/nas"
-	"github.com/acore2026/nas/security"
+	"github.com/free5gc/nas"
+	"github.com/free5gc/nas/security"
 	"github.com/free5gc/openapi/models"
 )
 

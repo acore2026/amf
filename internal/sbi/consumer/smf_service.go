@@ -11,7 +11,7 @@ import (
 	amf_context "github.com/acore/amf/internal/context"
 	"github.com/acore/amf/internal/util"
 	"github.com/acore/amf/pkg/factory"
-	"github.com/acore2026/nas/nasMessage"
+	"github.com/free5gc/nas/nasMessage"
 	"github.com/free5gc/openapi"
 	"github.com/free5gc/openapi/models"
 	Nnrf_NFDiscovery "github.com/free5gc/openapi/nrf/NFDiscovery"

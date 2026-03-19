@@ -7,10 +7,10 @@ import (
 	"reflect"
 
 	"github.com/acore/amf/internal/context"
-	"github.com/acore2026/nas"
-	"github.com/acore2026/nas/nasConvert"
-	"github.com/acore2026/nas/nasMessage"
-	"github.com/acore2026/nas/security"
+	"github.com/free5gc/nas"
+	"github.com/free5gc/nas/nasConvert"
+	"github.com/free5gc/nas/nasMessage"
+	"github.com/free5gc/nas/security"
 	"github.com/free5gc/openapi/models"
 )
 

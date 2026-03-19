@@ -1,3 +1,5 @@
+github.com/acore2026/nas v0.0.0-20260313070035-3c2891487c8e h1:hzqNA4xlzuQYjTtXjw6C36sABFxm73nVtDHEXREvkRc=
+github.com/acore2026/nas v0.0.0-20260313070035-3c2891487c8e/go.mod h1:y3f4YCGsvQOqQx8h+4MH22k0C8XaopK2ZP/F7qAW98k=
 github.com/aead/cmac v0.0.0-20160719120800-7af84192f0b1 h1:+JkXLHME8vLJafGhOH4aoV2Iu8bR55nU6iKMVfYVLjY=
 github.com/aead/cmac v0.0.0-20160719120800-7af84192f0b1/go.mod h1:nuudZmJhzWtx2212z+pkuy7B6nkBqa+xwNXZHL1j8cg=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 h1:DklsrG3dyBCFEj5IhUbnKptjxatkF07cF2ak3yi77so=
@@ -23,8 +25,6 @@ github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/free5gc/aper v1.1.0 h1:X36hts0PYQuN3d+VXpYsUZaibrokP8nbBVIQBVY2bNI=
 github.com/free5gc/aper v1.1.0/go.mod h1:v7xVwA5XaD9lBnZDOzvDF0Nw6GOcn32IrL7tM6zHPyM=
-github.com/free5gc/nas v1.2.2 h1:r2+9CHY1TRfTM/X2Pc+vBizeqweUJRuLo1DGub1vk5s=
-github.com/free5gc/nas v1.2.2/go.mod h1:y3f4YCGsvQOqQx8h+4MH22k0C8XaopK2ZP/F7qAW98k=
 github.com/free5gc/ngap v1.1.2 h1:AA+s9+eaE8fSTnmBbh1xiD3VPaszonCd7AQJGKX5PHM=
 github.com/free5gc/ngap v1.1.2/go.mod h1:4HYtB+msoTBc3cEPlSr4ZUUHn3BFZhdPuVASERMzVeI=
 github.com/free5gc/openapi v1.2.3 h1:w4TmYBR8TUE4ZgKo7eiMZbyZPURSBFlMWiFeX+OsiA8=

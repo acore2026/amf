@@ -3,7 +3,7 @@ package context
 import (
 	"sync"
 
-	"github.com/acore2026/nas/nasMessage"
+	"github.com/free5gc/nas/nasMessage"
 	"github.com/free5gc/openapi/models"
 )
 
