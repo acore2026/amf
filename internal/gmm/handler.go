@@ -80,6 +80,41 @@ func HandleULNASTransport(ue *context.AmfUe, anType models.AccessType,
 	return nil
 }
 
+func HandleULCooperation(ue *context.AmfUe, anType models.AccessType,
+	ulCooperation *nasMessage.ULCooperation,
+) error {
+	ue.GmmLog.Infof("Handle UL Cooperation over %s", anType)
+
+	if ue.MacFailed {
+		return fmt.Errorf("NAS message integrity check failed")
+	}
+	if ulCooperation == nil {
+		return fmt.Errorf("UL Cooperation message is nil")
+	}
+
+	logULCooperationIE(ue, "UeCap", ulCooperation.UeCap)
+	logULCooperationIE(ue, "OsType", ulCooperation.OsType)
+	logULCooperationIE(ue, "ULApContainer", ulCooperation.ULApContainer)
+	logULCooperationIE(ue, "CooperInfoContainer", ulCooperation.CooperInfoContainer)
+	for i, ie := range ulCooperation.UnknownIEs {
+		logULCooperationIE(ue, fmt.Sprintf("UnknownIE[%d]", i), ie)
+	}
+	return nil
+}
+
+func logULCooperationIE(ue *context.AmfUe, name string, ie *nasMessage.ULCooperationIE) {
+	if ie == nil {
+		ue.GmmLog.Infof("UL Cooperation %s: <nil>", name)
+		return
+	}
+	ue.GmmLog.Infof("UL Cooperation %s: IEI=0x%02x Len=%d Value=%s",
+		name,
+		ie.GetIei(),
+		ie.GetLen(),
+		hex.EncodeToString(ie.GetContents()),
+	)
+}
+
 func transport5GSMMessage(ue *context.AmfUe, anType models.AccessType,
 	ulNasTransport *nasMessage.ULNASTransport,
 ) error {

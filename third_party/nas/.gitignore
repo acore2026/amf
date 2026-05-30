@@ -1,0 +1,26 @@
+# Toolchain
+# Goland project folder
+.idea/
+# Visual Studio Code
+.vscode/
+# emacs/vim
+GPATH
+GRTAGS
+GTAGS
+TAGS
+tags
+cscope.*
+# mac
+.DS_Store
+
+support
+
+# NAS spec
+24501-*.zip
+spec.csv
+# Local third-party source copy used by AMF builds
+*_test.go
+coverage.out
+testdata/
+.github/
+internal/tools/

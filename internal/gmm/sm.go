@@ -101,6 +101,10 @@ func Registered(state *fsm.State, event fsm.EventType, args fsm.ArgsType) {
 			if err := HandleULNASTransport(amfUe, accessType, gmmMessage.ULNASTransport); err != nil {
 				logger.GmmLog.Errorln(err)
 			}
+		case nas.MsgTypeULCooperation:
+			if err := HandleULCooperation(amfUe, accessType, gmmMessage.ULCooperation); err != nil {
+				logger.GmmLog.Errorln(err)
+			}
 		case nas.MsgTypeConfigurationUpdateComplete:
 			if err := HandleConfigurationUpdateComplete(amfUe, gmmMessage.ConfigurationUpdateComplete); err != nil {
 				logger.GmmLog.Errorln(err)
