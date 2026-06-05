@@ -11,7 +11,7 @@ import (
 type ULCooperation struct {
 	nasType.ExtendedProtocolDiscriminator
 	nasType.SpareHalfOctetAndSecurityHeaderType
-	messageType          uint8
+	MessageType          uint8
 	nasType.ULCooperationMessageIdentity
 	ULApContainer       *ULCooperationIE
 	UnknownIEs          []*ULCooperationIE
@@ -25,7 +25,7 @@ type ULCooperationIE struct {
 
 func NewULCooperation(iei uint8) (uLCooperation *ULCooperation) {
 	uLCooperation = &ULCooperation{}
-	uLCooperation.messageType = iei
+	uLCooperation.MessageType = iei
 	uLCooperation.ULCooperationMessageIdentity.SetMessageType(iei)
 	return uLCooperation
 }
@@ -39,15 +39,6 @@ func NewULCooperationIE(iei uint8) (uLCooperationIE *ULCooperationIE) {
 const (
 	ULCooperationULApContainerType uint8 = 0x03
 )
-
-func (a *ULCooperation) GetMessageType() (messageType uint8) {
-	return a.messageType
-}
-
-func (a *ULCooperation) SetMessageType(messageType uint8) {
-	a.messageType = messageType
-	a.ULCooperationMessageIdentity.SetMessageType(messageType)
-}
 
 func (a *ULCooperationIE) GetIei() (iei uint8) {
 	return a.Iei
@@ -124,7 +115,7 @@ func (a *ULCooperation) DecodeULCooperation(byteArray *[]byte) error {
 	if err := binary.Read(buffer, binary.BigEndian, &a.ULCooperationMessageIdentity.Octet); err != nil {
 		return fmt.Errorf("NAS decode error (ULCooperation/ULCooperationMessageIdentity): %w", err)
 	}
-	a.messageType = a.ULCooperationMessageIdentity.GetMessageType()
+	a.MessageType = a.ULCooperationMessageIdentity.GetMessageType()
 	for buffer.Len() > 0 {
 		ie, err := decodeULCooperationIE(buffer)
 		if err != nil {
@@ -146,7 +137,7 @@ func (a *ULCooperation) DecodeULCooperationV2(byteArray *[]byte) error {
 	if err := binary.Read(buffer, binary.BigEndian, &a.ULCooperationMessageIdentity.Octet); err != nil {
 		return fmt.Errorf("NAS decode error (ULCooperation/ULCooperationMessageIdentity): %w", err)
 	}
-	a.messageType = a.ULCooperationMessageIdentity.GetMessageType()
+	a.MessageType = a.ULCooperationMessageIdentity.GetMessageType()
 	for buffer.Len() > 0 {
 		ie, err := decodeULCooperationIEV2(buffer)
 		if err != nil {
