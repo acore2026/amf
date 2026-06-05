@@ -92,10 +92,20 @@ func HandleULCooperation(ue *context.AmfUe, anType models.AccessType,
 		return fmt.Errorf("UL Cooperation message is nil")
 	}
 
-	logULCooperationIE(ue, "UeCap", ulCooperation.UeCap)
-	logULCooperationIE(ue, "OsType", ulCooperation.OsType)
+	ue.GmmLog.Info("=== UL Cooperation Message Details ===")
+	ue.GmmLog.Infof("ExtendedProtocolDiscriminator: 0x%02x", ulCooperation.ExtendedProtocolDiscriminator.Octet)
+	ue.GmmLog.Infof("SpareHalfOctetAndSecurityHeaderType: 0x%02x (Spare=0x%02x, SecurityHeaderType=0x%02x)",
+		ulCooperation.SpareHalfOctetAndSecurityHeaderType.Octet,
+		(ulCooperation.SpareHalfOctetAndSecurityHeaderType.Octet >> 4) & 0x0f,
+		ulCooperation.SpareHalfOctetAndSecurityHeaderType.Octet & 0x0f)
+	ue.GmmLog.Infof("messageType (field): 0x%02x", ulCooperation.messageType)
+	ue.GmmLog.Infof("ULCooperationMessageIdentity: 0x%02x (GetMessageType=0x%02x)",
+		ulCooperation.ULCooperationMessageIdentity.Octet,
+		ulCooperation.GetMessageType())
+
+	ue.GmmLog.Info("--- Information Elements ---")
 	logULCooperationIE(ue, "ULApContainer", ulCooperation.ULApContainer)
-	logULCooperationIE(ue, "CooperInfoContainer", ulCooperation.CooperInfoContainer)
+	ue.GmmLog.Infof("UnknownIEs count: %d", len(ulCooperation.UnknownIEs))
 	for i, ie := range ulCooperation.UnknownIEs {
 		logULCooperationIE(ue, fmt.Sprintf("UnknownIE[%d]", i), ie)
 	}
@@ -120,15 +130,19 @@ func HandleULCooperation(ue *context.AmfUe, anType models.AccessType,
 
 func logULCooperationIE(ue *context.AmfUe, name string, ie *nasMessage.ULCooperationIE) {
 	if ie == nil {
-		ue.GmmLog.Infof("UL Cooperation %s: <nil>", name)
+		ue.GmmLog.Infof("  %s: <nil>", name)
 		return
 	}
-	ue.GmmLog.Infof("UL Cooperation %s: IEI=0x%02x Len=%d Value=%s",
-		name,
-		ie.GetIei(),
-		ie.GetLen(),
-		hex.EncodeToString(ie.GetContents()),
-	)
+	contents := ie.GetContents()
+	ue.GmmLog.Infof("  %s:", name)
+	ue.GmmLog.Infof("    IEI: 0x%02x", ie.GetIei())
+	ue.GmmLog.Infof("    Length: %d", ie.GetLen())
+	
+	if len(contents) > 0 && contents[0] == 0x7b {
+		ue.GmmLog.Infof("    Contents (JSON): %s", string(contents))
+	} else {
+		ue.GmmLog.Infof("    Contents (Hex): %s", hex.EncodeToString(contents))
+	}
 }
 
 func transport5GSMMessage(ue *context.AmfUe, anType models.AccessType,

@@ -11,11 +11,9 @@ import (
 type ULCooperation struct {
 	nasType.ExtendedProtocolDiscriminator
 	nasType.SpareHalfOctetAndSecurityHeaderType
+	messageType          uint8
 	nasType.ULCooperationMessageIdentity
-	UeCap               *ULCooperationIE
-	OsType              *ULCooperationIE
 	ULApContainer       *ULCooperationIE
-	CooperInfoContainer *ULCooperationIE
 	UnknownIEs          []*ULCooperationIE
 }
 
@@ -27,6 +25,8 @@ type ULCooperationIE struct {
 
 func NewULCooperation(iei uint8) (uLCooperation *ULCooperation) {
 	uLCooperation = &ULCooperation{}
+	uLCooperation.messageType = iei
+	uLCooperation.ULCooperationMessageIdentity.SetMessageType(iei)
 	return uLCooperation
 }
 
@@ -37,11 +37,17 @@ func NewULCooperationIE(iei uint8) (uLCooperationIE *ULCooperationIE) {
 }
 
 const (
-	ULCooperationUeCapType               uint8 = 0x01
-	ULCooperationOsTypeType              uint8 = 0x02
-	ULCooperationULApContainerType       uint8 = 0x03
-	ULCooperationCooperInfoContainerType uint8 = 0x04
+	ULCooperationULApContainerType uint8 = 0x03
 )
+
+func (a *ULCooperation) GetMessageType() (messageType uint8) {
+	return a.messageType
+}
+
+func (a *ULCooperation) SetMessageType(messageType uint8) {
+	a.messageType = messageType
+	a.ULCooperationMessageIdentity.SetMessageType(messageType)
+}
 
 func (a *ULCooperationIE) GetIei() (iei uint8) {
 	return a.Iei
@@ -80,16 +86,7 @@ func (a *ULCooperation) EncodeULCooperation(buffer *bytes.Buffer) error {
 	if err := binary.Write(buffer, binary.BigEndian, a.ULCooperationMessageIdentity.Octet); err != nil {
 		return fmt.Errorf("NAS encode error (ULCooperation/ULCooperationMessageIdentity): %w", err)
 	}
-	if err := encodeULCooperationIE(buffer, "UeCap", a.UeCap); err != nil {
-		return err
-	}
-	if err := encodeULCooperationIE(buffer, "OsType", a.OsType); err != nil {
-		return err
-	}
 	if err := encodeULCooperationIE(buffer, "ULApContainer", a.ULApContainer); err != nil {
-		return err
-	}
-	if err := encodeULCooperationIE(buffer, "CooperInfoContainer", a.CooperInfoContainer); err != nil {
 		return err
 	}
 	for _, ie := range a.UnknownIEs {
@@ -127,6 +124,7 @@ func (a *ULCooperation) DecodeULCooperation(byteArray *[]byte) error {
 	if err := binary.Read(buffer, binary.BigEndian, &a.ULCooperationMessageIdentity.Octet); err != nil {
 		return fmt.Errorf("NAS decode error (ULCooperation/ULCooperationMessageIdentity): %w", err)
 	}
+	a.messageType = a.ULCooperationMessageIdentity.GetMessageType()
 	for buffer.Len() > 0 {
 		ie, err := decodeULCooperationIE(buffer)
 		if err != nil {
@@ -135,6 +133,49 @@ func (a *ULCooperation) DecodeULCooperation(byteArray *[]byte) error {
 		a.setULCooperationIE(ie)
 	}
 	return nil
+}
+
+func (a *ULCooperation) DecodeULCooperationV2(byteArray *[]byte) error {
+	buffer := bytes.NewBuffer(*byteArray)
+	if err := binary.Read(buffer, binary.BigEndian, &a.ExtendedProtocolDiscriminator.Octet); err != nil {
+		return fmt.Errorf("NAS decode error (ULCooperation/ExtendedProtocolDiscriminator): %w", err)
+	}
+	if err := binary.Read(buffer, binary.BigEndian, &a.SpareHalfOctetAndSecurityHeaderType.Octet); err != nil {
+		return fmt.Errorf("NAS decode error (ULCooperation/SpareHalfOctetAndSecurityHeaderType): %w", err)
+	}
+	if err := binary.Read(buffer, binary.BigEndian, &a.ULCooperationMessageIdentity.Octet); err != nil {
+		return fmt.Errorf("NAS decode error (ULCooperation/ULCooperationMessageIdentity): %w", err)
+	}
+	a.messageType = a.ULCooperationMessageIdentity.GetMessageType()
+	for buffer.Len() > 0 {
+		ie, err := decodeULCooperationIEV2(buffer)
+		if err != nil {
+			return err
+		}
+		a.setULCooperationIE(ie)
+	}
+	return nil
+}
+
+func decodeULCooperationIEV2(buffer *bytes.Buffer) (*ULCooperationIE, error) {
+	var iei uint8
+	if err := binary.Read(buffer, binary.BigEndian, &iei); err != nil {
+		return nil, fmt.Errorf("NAS decode error (ULCooperation/iei): %w", err)
+	}
+	var len1 uint8
+	if err := binary.Read(buffer, binary.BigEndian, &len1); err != nil {
+		return nil, fmt.Errorf("NAS decode error (ULCooperation/len): %w", err)
+	}
+	ie := NewULCooperationIE(iei)
+	ie.Len = uint16(len1)
+	if int(ie.Len) > buffer.Len() {
+		return nil, fmt.Errorf("invalid ie length (ULCooperation/iei 0x%02x): %d exceeds remaining %d", iei, ie.Len, buffer.Len())
+	}
+	ie.Buffer = make([]uint8, ie.Len)
+	if err := binary.Read(buffer, binary.BigEndian, ie.Buffer); err != nil {
+		return nil, fmt.Errorf("NAS decode error (ULCooperation/iei 0x%02x): %w", iei, err)
+	}
+	return ie, nil
 }
 
 func decodeULCooperationIE(buffer *bytes.Buffer) (*ULCooperationIE, error) {
@@ -161,29 +202,8 @@ func decodeULCooperationIE(buffer *bytes.Buffer) (*ULCooperationIE, error) {
 
 func (a *ULCooperation) setULCooperationIE(ie *ULCooperationIE) {
 	switch ie.GetIei() {
-	case ULCooperationUeCapType:
-		a.UeCap = ie
-	case ULCooperationOsTypeType:
-		a.OsType = ie
 	case ULCooperationULApContainerType:
 		a.ULApContainer = ie
-	case ULCooperationCooperInfoContainerType:
-		a.CooperInfoContainer = ie
-	default:
-		a.assignULCooperationIEByOrder(ie)
-	}
-}
-
-func (a *ULCooperation) assignULCooperationIEByOrder(ie *ULCooperationIE) {
-	switch {
-	case a.UeCap == nil:
-		a.UeCap = ie
-	case a.OsType == nil:
-		a.OsType = ie
-	case a.ULApContainer == nil:
-		a.ULApContainer = ie
-	case a.CooperInfoContainer == nil:
-		a.CooperInfoContainer = ie
 	default:
 		a.UnknownIEs = append(a.UnknownIEs, ie)
 	}
