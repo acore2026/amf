@@ -707,6 +707,37 @@ func includeConfiguredNssaiCheck(ue *context.AmfUe) bool {
 	return false
 }
 
+func BuildDLCooperation(ue *context.AmfUe, accessType models.AccessType,
+	networkCapability *nasMessage.DLCooperationIE,
+	dlApContainer *nasMessage.DLCooperationIE,
+) ([]byte, error) {
+	m := nas.NewMessage()
+	m.GmmMessage = nas.NewGmmMessage()
+	m.GmmHeader.SetMessageType(nas.MsgTypeDLCooperation)
+
+	m.SecurityHeader = nas.SecurityHeader{
+		ProtocolDiscriminator: nasMessage.Epd5GSMobilityManagementMessage,
+		SecurityHeaderType:    nas.SecurityHeaderTypeIntegrityProtectedAndCiphered,
+	}
+
+	dlCooperation := nasMessage.NewDLCooperation(nas.MsgTypeDLCooperation)
+	dlCooperation.SetExtendedProtocolDiscriminator(nasMessage.Epd5GSMobilityManagementMessage)
+	dlCooperation.SpareHalfOctetAndSecurityHeaderType.SetSecurityHeaderType(nas.SecurityHeaderTypePlainNas)
+	dlCooperation.SpareHalfOctetAndSecurityHeaderType.SetSpareHalfOctet(0)
+	dlCooperation.DLCooperationMessageIdentity.SetMessageType(nas.MsgTypeDLCooperation)
+
+	if networkCapability != nil {
+		dlCooperation.NetworkCapability = networkCapability
+	}
+	if dlApContainer != nil {
+		dlCooperation.DLApContainer = dlApContainer
+	}
+
+	m.GmmMessage.DLCooperation = dlCooperation
+
+	return nas_security.Encode(ue, m, accessType)
+}
+
 func BuildStatus5GMM(ue *context.AmfUe, accessType models.AccessType, cause uint8) ([]byte, error) {
 	m := nas.NewMessage()
 	m.GmmMessage = nas.NewGmmMessage()

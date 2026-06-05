@@ -478,6 +478,35 @@ func SendSecurityModeCommand(ue *context.RanUe, accessType models.AccessType, ea
 	}
 }
 
+func SendDLCooperation(ue *context.RanUe,
+	networkCapability *nasMessage.DLCooperationIE,
+	dlApContainer *nasMessage.DLCooperationIE,
+) {
+	if ue == nil {
+		logger.GmmLog.Error("SendDLCooperation: RanUe is nil")
+		return
+	}
+	if ue.AmfUe == nil {
+		logger.GmmLog.Error("SendDLCooperation: AmfUe is nil")
+		return
+	}
+	if ue.Ran == nil {
+		logger.GmmLog.Error("SendDLCooperation: Ran is nil")
+		return
+	}
+	amfUe := ue.AmfUe
+	ran := ue.Ran
+	amfUe.GmmLog.Info("Send DL Cooperation")
+
+	nasMsg, err := BuildDLCooperation(amfUe, ran.AnType, networkCapability, dlApContainer)
+	if err != nil {
+		amfUe.GmmLog.Error(err.Error())
+		return
+	}
+
+	ngap_message.SendDownlinkNasTransport(ue, nasMsg, nil)
+}
+
 func SendDeregistrationRequest(ue *context.RanUe, accessType uint8, reRegistrationRequired bool, cause5GMM uint8) {
 	if ue == nil {
 		logger.GmmLog.Error("SendDeregistrationRequest: RanUe is nil")

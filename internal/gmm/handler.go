@@ -99,6 +99,22 @@ func HandleULCooperation(ue *context.AmfUe, anType models.AccessType,
 	for i, ie := range ulCooperation.UnknownIEs {
 		logULCooperationIE(ue, fmt.Sprintf("UnknownIE[%d]", i), ie)
 	}
+
+	ranUe := ue.RanUe[anType]
+	if ranUe == nil {
+		return fmt.Errorf("RanUe is nil for access type %s", anType)
+	}
+
+	networkCapability := nasMessage.NewDLCooperationIE(nasMessage.DLCooperationNetworkCapabilityType)
+	networkCapability.SetLen(1)
+	networkCapability.Buffer = []uint8{0x00}
+
+	dlApContainer := nasMessage.NewDLCooperationIE(nasMessage.DLCooperationDLApContainerType)
+	dlApContainer.SetLen(1)
+	dlApContainer.Buffer = []uint8{0x00}
+
+	gmm_message.SendDLCooperation(ranUe, networkCapability, dlApContainer)
+
 	return nil
 }
 

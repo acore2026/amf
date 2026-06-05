@@ -24,6 +24,7 @@ type GmmMessage struct {
 	*nasMessage.ULNASTransport                                   // 8.2.10
 	*nasMessage.DLNASTransport                                   // 8.2.11
 	*nasMessage.ULCooperation                                    // local extension
+	*nasMessage.DLCooperation                                    // local extension
 	*nasMessage.DeregistrationRequestUEOriginatingDeregistration // 8.2.12
 	*nasMessage.DeregistrationAcceptUEOriginatingDeregistration  // 8.2.13
 	*nasMessage.DeregistrationRequestUETerminatedDeregistration  // 8.2.14
@@ -74,6 +75,7 @@ const (
 	MsgTypeULNASTransport                                   uint8 = 103
 	MsgTypeDLNASTransport                                   uint8 = 104
 	MsgTypeULCooperation                                    uint8 = 0xe1
+	MsgTypeDLCooperation                                    uint8 = 0xe2
 )
 
 func (a *Message) GmmMessageDecode(byteArray *[]byte) error {
@@ -170,6 +172,9 @@ func (a *Message) GmmMessageDecode(byteArray *[]byte) error {
 	case MsgTypeULCooperation:
 		a.GmmMessage.ULCooperation = nasMessage.NewULCooperation(MsgTypeULCooperation)
 		return a.GmmMessage.DecodeULCooperation(byteArray)
+	case MsgTypeDLCooperation:
+		a.GmmMessage.DLCooperation = nasMessage.NewDLCooperation(MsgTypeDLCooperation)
+		return a.GmmMessage.DecodeDLCooperation(byteArray)
 	default:
 		return fmt.Errorf("NAS decode Fail: MsgType[%d] doesn't exist in GMM Message",
 			a.GmmMessage.GmmHeader.GetMessageType())
@@ -236,6 +241,8 @@ func (a *Message) GmmMessageEncode(buffer *bytes.Buffer) error {
 		return a.GmmMessage.EncodeDLNASTransport(buffer)
 	case MsgTypeULCooperation:
 		return a.GmmMessage.EncodeULCooperation(buffer)
+	case MsgTypeDLCooperation:
+		return a.GmmMessage.EncodeDLCooperation(buffer)
 	default:
 		return fmt.Errorf("NAS Encode Fail: MsgType[%d] doesn't exist in GMM Message",
 			a.GmmMessage.GmmHeader.GetMessageType())
