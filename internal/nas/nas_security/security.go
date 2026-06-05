@@ -219,9 +219,21 @@ func Decode(ue *context.AmfUe, accessType models.AccessType, payload []byte,
 		payload = payload[1:]
 	}
 
-	err = msg.PlainNasDecode(&payload)
-	if err != nil {
-		return nil, false, err
+	// Special handling for EPD=0x7f (ULCooperation message)
+	// This is an extended protocol discriminator for custom NAS messages
+	if len(payload) >= 3 && payload[0] == 0x7f && payload[2] == nas.MsgTypeULCooperation {
+		ue.NASLog.Debugln("Detected ULCooperation message with EPD=0x7f, using DecodeULCooperationV2")
+		msg.GmmMessage = new(nas.GmmMessage)
+		msg.GmmMessage.ULCooperation = nasMessage.NewULCooperation(nas.MsgTypeULCooperation)
+		if err = msg.GmmMessage.ULCooperation.DecodeULCooperationV2(&payload); err != nil {
+			return nil, false, fmt.Errorf("ULCooperation V2 decode error: %+v", err)
+		}
+		ue.NASLog.Debugln("Successfully decoded ULCooperation message with EPD=0x7f")
+	} else {
+		err = msg.PlainNasDecode(&payload)
+		if err != nil {
+			return nil, false, err
+		}
 	}
 
 	msgTypeText := func() string {
