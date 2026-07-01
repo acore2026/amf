@@ -1,0 +1,129 @@
+info:
+  version: 1.0.9
+  description: AMF initial local configuration
+
+configuration:
+  nfInstanceId: c8e62953-f380-4b07-97b1-a3e7a702ee52
+  amfName: AMF
+  ngapIpList:
+    - 0.0.0.0
+  ngapPort: 38412
+  sbi:
+    scheme: http
+    registerIPv4: amf.free5gc.org
+    bindingIPv4: amf.free5gc.org
+    port: 8000
+    tls:
+      pem: cert/amf.pem
+      key: cert/amf.key
+  serviceNameList:
+    - namf-comm
+    - namf-evts
+    - namf-mt
+    - namf-loc
+    - namf-oam
+  servedGuamiList:
+    - plmnId:
+        mcc: 001
+        mnc: 01
+      amfId: cafe00
+  supportTaiList:
+    - plmnId:
+        mcc: 001
+        mnc: 01
+      tac: 000001
+  plmnSupportList:
+    - plmnId:
+        mcc: 001
+        mnc: 01
+      snssaiList:
+        - sst: 1
+          sd: 000000
+        - sst: 1
+          sd: 112233
+  supportDnnList:
+    - IMS
+    - ims
+    - internet
+  nrfUri: http://nrf.free5gc.org:8000
+  nrfCertPem: cert/nrf.pem
+  security:
+    integrityOrder:
+      - NIA2
+      - NIA0
+    cipheringOrder:
+      - NEA0
+      - NEA2
+  networkName:
+    full: free5GC
+    short: free
+  ngapIE:
+    mobilityRestrictionList:
+      enable: true
+    maskedIMEISV:
+      enable: true
+    redirectionVoiceFallback:
+      enable: false
+  nasIE:
+    networkFeatureSupport5GS:
+      enable: true
+      length: 1
+      imsVoPS: 1
+      emc: 0
+      emf: 0
+      iwkN26: 0
+      mpsi: 0
+      emcN3: 0
+      mcsi: 0
+  t3502Value: 3600
+  t3512Value: 7200
+  non3gppDeregTimerValue: 3240
+  t3513:
+    enable: true
+    expireTime: 15s
+    maxRetryTimes: 5
+  t3522:
+    enable: true
+    expireTime: 10s
+    maxRetryTimes: 5
+  t3550:
+    enable: true
+    expireTime: 10s
+    maxRetryTimes: 5
+  t3555:
+    enable: false
+    expireTime: 10s
+    maxRetryTimes: 5
+  t3560:
+    enable: true
+    expireTime: 10s
+    maxRetryTimes: 5
+  t3565:
+    enable: true
+    expireTime: 10s
+    maxRetryTimes: 5
+  t3570:
+    enable: true
+    expireTime: 10s
+    maxRetryTimes: 5
+  locality: area1
+  sctp:
+    numOstreams: 3
+    maxInstreams: 5
+    maxAttempts: 2
+    maxInitTimeout: 2
+  defaultUECtxReq: false
+  metrics:
+    enable: false
+    scheme: http
+    bindingIPv4: amf.free5gc.org
+    port: 9091
+    tls:
+      pem: cert/amf.pem
+      key: cert/amf.key
+    namespace: free5gc
+
+logger:
+  enable: true
+  level: info
+  reportCaller: false
