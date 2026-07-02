@@ -113,15 +113,21 @@ func HandleULCooperation(ue *context.AmfUe, anType models.AccessType,
 		return fmt.Errorf("RanUe is nil for access type %s", anType)
 	}
 
-	networkCapability := nasMessage.NewDLCooperationIE(nasMessage.DLCooperationNetworkCapabilityType)
-	networkCapability.SetLen(1)
-	networkCapability.Buffer = []uint8{0x00}
-
 	dlApContainer := nasMessage.NewDLCooperationIE(nasMessage.DLCooperationDLApContainerType)
-	dlApContainer.SetLen(1)
-	dlApContainer.Buffer = []uint8{0x00}
+	
+	if ulCooperation.ULApContainer != nil {
+		dlApContainer.SetLen(ulCooperation.ULApContainer.GetLen())
+		dlApContainer.SetContainerType(ulCooperation.ULApContainer.GetContainerType())
+		dlApContainer.SetContainerContentLength(ulCooperation.ULApContainer.GetContainerContentLength())
+		dlApContainer.SetContainerTypePTI(ulCooperation.ULApContainer.GetContainerTypePTI())
+		dlApContainer.SetContainerContent(ulCooperation.ULApContainer.GetContainerContent())
+		dlApContainer.SetContents(ulCooperation.ULApContainer.GetContents())
+	} else {
+		dlApContainer.SetLen(0)
+	}
 
-	gmm_message.SendDLCooperation(ranUe, networkCapability, dlApContainer)
+	ue.GmmLog.Info("Sending DL Cooperation response")
+	gmm_message.SendDLCooperation(ranUe, dlApContainer)
 
 	return nil
 }

@@ -708,7 +708,6 @@ func includeConfiguredNssaiCheck(ue *context.AmfUe) bool {
 }
 
 func BuildDLCooperation(ue *context.AmfUe, accessType models.AccessType,
-	networkCapability *nasMessage.DLCooperationIE,
 	dlApContainer *nasMessage.DLCooperationIE,
 ) ([]byte, error) {
 	m := nas.NewMessage()
@@ -724,11 +723,7 @@ func BuildDLCooperation(ue *context.AmfUe, accessType models.AccessType,
 	dlCooperation.SetExtendedProtocolDiscriminator(nasMessage.Epd5GSMobilityManagementMessage)
 	dlCooperation.SpareHalfOctetAndSecurityHeaderType.SetSecurityHeaderType(nas.SecurityHeaderTypePlainNas)
 	dlCooperation.SpareHalfOctetAndSecurityHeaderType.SetSpareHalfOctet(0)
-	dlCooperation.DLCooperationMessageIdentity.SetMessageType(nas.MsgTypeDLCooperation)
 
-	if networkCapability != nil {
-		dlCooperation.NetworkCapability = networkCapability
-	}
 	if dlApContainer != nil {
 		dlCooperation.DLApContainer = dlApContainer
 	}

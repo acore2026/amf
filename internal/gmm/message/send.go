@@ -479,7 +479,6 @@ func SendSecurityModeCommand(ue *context.RanUe, accessType models.AccessType, ea
 }
 
 func SendDLCooperation(ue *context.RanUe,
-	networkCapability *nasMessage.DLCooperationIE,
 	dlApContainer *nasMessage.DLCooperationIE,
 ) {
 	if ue == nil {
@@ -498,7 +497,7 @@ func SendDLCooperation(ue *context.RanUe,
 	ran := ue.Ran
 	amfUe.GmmLog.Info("Send DL Cooperation")
 
-	nasMsg, err := BuildDLCooperation(amfUe, ran.AnType, networkCapability, dlApContainer)
+	nasMsg, err := BuildDLCooperation(amfUe, ran.AnType, dlApContainer)
 	if err != nil {
 		amfUe.GmmLog.Error(err.Error())
 		return
