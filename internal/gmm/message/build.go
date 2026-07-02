@@ -730,7 +730,50 @@ func BuildDLCooperation(ue *context.AmfUe, accessType models.AccessType,
 
 	m.GmmMessage.DLCooperation = dlCooperation
 
-	return nas_security.Encode(ue, m, accessType)
+	ue.GmmLog.Info("=== DLCooperation Message to Send ===")
+	ue.GmmLog.Infof("  Extended Protocol Discriminator: 0x%02x", 
+		dlCooperation.ExtendedProtocolDiscriminator.GetExtendedProtocolDiscriminator())
+	ue.GmmLog.Infof("  Security Header Type: 0x%02x", 
+		dlCooperation.SpareHalfOctetAndSecurityHeaderType.GetSecurityHeaderType())
+	ue.GmmLog.Infof("  Message Type: 0x%02x", dlCooperation.MessageType)
+	ue.GmmLog.Infof("  Message Identity: 0x%02x", dlCooperation.MessageIdentity)
+	
+	if dlCooperation.DLApContainer != nil {
+		logDLCooperationIE(ue, "DLApContainer", dlCooperation.DLApContainer)
+	} else {
+		ue.GmmLog.Info("  DLApContainer: <nil>")
+	}
+	
+	ue.GmmLog.Infof("  UnknownIEs count: %d", len(dlCooperation.UnknownIEs))
+	for i, ie := range dlCooperation.UnknownIEs {
+		logDLCooperationIE(ue, fmt.Sprintf("UnknownIE[%d]", i), ie)
+	}
+
+	ue.GmmLog.Info("=== Security Header Configuration ===")
+	ue.GmmLog.Infof("  Protocol Discriminator: 0x%02x", m.SecurityHeader.ProtocolDiscriminator)
+	ue.GmmLog.Infof("  Security Header Type: 0x%02x (%s)", 
+		m.SecurityHeader.SecurityHeaderType,
+		securityTypeToString(m.SecurityHeader.SecurityHeaderType))
+	ue.GmmLog.Infof("  Integrity Protection: Enabled")
+	ue.GmmLog.Infof("  Ciphering: Enabled")
+
+	encodedMsg, err := nas_security.Encode(ue, m, accessType)
+	if err != nil {
+		ue.GmmLog.Errorf("Failed to encode DLCooperation: %v", err)
+		return nil, err
+	}
+
+	ue.GmmLog.Info("=== Encoded DLCooperation Message ===")
+	ue.GmmLog.Infof("  Total length: %d bytes", len(encodedMsg))
+	ue.GmmLog.Infof("  Hex dump: %s", hex.EncodeToString(encodedMsg))
+	
+	if len(encodedMsg) > 7 {
+		ue.GmmLog.Info("  Message structure:")
+		ue.GmmLog.Infof("    Security header (0-6): %s", hex.EncodeToString(encodedMsg[:7]))
+		ue.GmmLog.Infof("    Encrypted payload (7+): %s", hex.EncodeToString(encodedMsg[7:]))
+	}
+
+	return encodedMsg, nil
 }
 
 func BuildStatus5GMM(ue *context.AmfUe, accessType models.AccessType, cause uint8) ([]byte, error) {
@@ -959,4 +1002,42 @@ func BuildConfigurationUpdateCommand(ue *context.AmfUe, anType models.AccessType
 		return nil, fmt.Errorf("BuildConfigurationUpdateCommand() err: %v", err), false
 	}
 	return b, err, needTimer
+}
+
+func logDLCooperationIE(ue *context.AmfUe, name string, ie *nasMessage.DLCooperationIE) {
+	if ie == nil {
+		ue.GmmLog.Infof("  %s: <nil>", name)
+		return
+	}
+	contents := ie.GetContents()
+	ue.GmmLog.Infof("  %s:", name)
+	ue.GmmLog.Infof("    IEI: 0x%02x", ie.GetIei())
+	ue.GmmLog.Infof("    Length: %d", ie.GetLen())
+	ue.GmmLog.Infof("    ContainerType: 0x%04x", ie.GetContainerType())
+	ue.GmmLog.Infof("    ContainerContentLength: %d", ie.GetContainerContentLength())
+	ue.GmmLog.Infof("    ContainerTypePTI: 0x%02x", ie.GetContainerTypePTI())
+	ue.GmmLog.Infof("    ContainerContent: 0x%08x", ie.GetContainerContent())
+	
+	if len(contents) > 0 && contents[0] == 0x7b {
+		ue.GmmLog.Infof("    Contents (JSON): %s", string(contents))
+	} else {
+		ue.GmmLog.Infof("    Contents (Hex): %s", hex.EncodeToString(contents))
+	}
+}
+
+func securityTypeToString(secType uint8) string {
+	switch secType {
+	case 0:
+		return "Plain NAS"
+	case 1:
+		return "Integrity Protected"
+	case 2:
+		return "Integrity Protected and Ciphered"
+	case 3:
+		return "Integrity Protected with New Security Context"
+	case 4:
+		return "Integrity Protected and Ciphered with New Security Context"
+	default:
+		return fmt.Sprintf("Unknown (%d)", secType)
+	}
 }

@@ -2551,12 +2551,22 @@ func HandleDeregistrationAccept(ue *context.AmfUe, anType models.AccessType,
 }
 
 func HandleStatus5GMM(ue *context.AmfUe, anType models.AccessType, status5GMM *nasMessage.Status5GMM) error {
-	ue.GmmLog.Info("Handle Staus 5GMM")
+	ue.GmmLog.Info("Handle Status 5GMM")
 	if ue.MacFailed {
 		return fmt.Errorf("NAS message integrity check failed")
 	}
 
+	ue.GmmLog.Info("=== Status5GMM Message Details ===")
+	ue.GmmLog.Infof("  Extended Protocol Discriminator: 0x%02x", 
+		status5GMM.ExtendedProtocolDiscriminator.GetExtendedProtocolDiscriminator())
+	ue.GmmLog.Infof("  Security Header Type: 0x%02x", 
+		status5GMM.SpareHalfOctetAndSecurityHeaderType.GetSecurityHeaderType())
+	ue.GmmLog.Infof("  Message Identity (Problematic Message Type): 0x%02x", 
+		status5GMM.STATUSMessageIdentity5GMM.GetMessageType())
+	
 	cause := status5GMM.Cause5GMM.GetCauseValue()
-	ue.GmmLog.Errorf("Error condition [Cause Value: %s]", nasMessage.Cause5GMMToString(cause))
+	ue.GmmLog.Infof("  Cause Value: %s (0x%02x)", nasMessage.Cause5GMMToString(cause), cause)
+	ue.GmmLog.Error("Error condition reported by UE")
+	
 	return nil
 }

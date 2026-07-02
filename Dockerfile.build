@@ -4,6 +4,9 @@ RUN apt-get update && apt-get install -y git gcc musl-dev && rm -rf /var/lib/apt
 
 WORKDIR /build
 
+ENV GOPROXY=https://mirrors.aliyun.com/goproxy/,direct
+ENV GOSUMDB=off
+
 COPY go.mod go.sum ./
 COPY third_party/ ./third_party/
 RUN go mod download

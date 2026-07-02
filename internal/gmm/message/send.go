@@ -495,15 +495,22 @@ func SendDLCooperation(ue *context.RanUe,
 	}
 	amfUe := ue.AmfUe
 	ran := ue.Ran
-	amfUe.GmmLog.Info("Send DL Cooperation")
+	
+	amfUe.GmmLog.Info("=== SendDLCooperation ===")
+	amfUe.GmmLog.Infof("  AMF UE NGAP ID: %d", ue.AmfUeNgapId)
+	amfUe.GmmLog.Infof("  RAN UE NGAP ID: %d", ue.RanUeNgapId)
+	amfUe.GmmLog.Infof("  Access Type: %s", ran.AnType)
+	amfUe.GmmLog.Infof("  Security Context Available: %v", amfUe.SecurityContextAvailable)
 
 	nasMsg, err := BuildDLCooperation(amfUe, ran.AnType, dlApContainer)
 	if err != nil {
-		amfUe.GmmLog.Error(err.Error())
+		amfUe.GmmLog.Errorf("BuildDLCooperation failed: %v", err)
 		return
 	}
 
+	amfUe.GmmLog.Info("Successfully built DLCooperation, sending via NGAP...")
 	ngap_message.SendDownlinkNasTransport(ue, nasMsg, nil)
+	amfUe.GmmLog.Info("DLCooperation sent successfully")
 }
 
 func SendDeregistrationRequest(ue *context.RanUe, accessType uint8, reRegistrationRequired bool, cause5GMM uint8) {

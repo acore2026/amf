@@ -287,7 +287,7 @@ func Decode(ue *context.AmfUe, accessType models.AccessType, payload []byte,
 		}
 		
 		msg.GmmMessage.GmmHeader.SetExtendedProtocolDiscriminator(msg.GmmMessage.ULCooperation.ExtendedProtocolDiscriminator.Octet)
-		msg.GmmMessage.GmmHeader.SetSecurityHeaderType(msg.GmmMessage.ULCooperation.SpareHalfOctetAndSecurityHeaderType.GetSecurityHeaderType())
+		msg.GmmMessage.GmmHeader.Octet[1] = msg.GmmMessage.ULCooperation.SpareHalfOctetAndSecurityHeaderType.Octet
 		msg.GmmMessage.GmmHeader.SetMessageType(msg.GmmMessage.ULCooperation.MessageType)
 		
 		ue.NASLog.Infoln("Successfully decoded ULCooperation message")
