@@ -98,10 +98,8 @@ func HandleULCooperation(ue *context.AmfUe, anType models.AccessType,
 		ulCooperation.SpareHalfOctetAndSecurityHeaderType.Octet,
 		(ulCooperation.SpareHalfOctetAndSecurityHeaderType.Octet >> 4) & 0x0f,
 		ulCooperation.SpareHalfOctetAndSecurityHeaderType.Octet & 0x0f)
-	ue.GmmLog.Infof("MessageType (field): 0x%02x", ulCooperation.MessageType)
-	ue.GmmLog.Infof("ULCooperationMessageIdentity: 0x%02x (GetMessageType=0x%02x)",
-		ulCooperation.ULCooperationMessageIdentity.Octet,
-		ulCooperation.GetMessageType())
+	ue.GmmLog.Infof("MessageType: 0x%02x", ulCooperation.MessageType)
+	ue.GmmLog.Infof("MessageIdentity: 0x%02x", ulCooperation.MessageIdentity)
 
 	ue.GmmLog.Info("--- Information Elements ---")
 	logULCooperationIE(ue, "ULApContainer", ulCooperation.ULApContainer)

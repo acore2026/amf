@@ -9,6 +9,7 @@ import (
 	"github.com/acore2026/amf/internal/nas/nas_security"
 	"github.com/acore2026/nas"
 	nas_metrics "github.com/acore2026/util/metrics/nas"
+	"github.com/sirupsen/logrus"
 )
 
 func HandleNAS(ranUe *amf_context.RanUe, procedureCode int64, nasPdu []byte, initialMessage bool) {
@@ -33,6 +34,14 @@ func HandleNAS(ranUe *amf_context.RanUe, procedureCode int64, nasPdu []byte, ini
 		ranUe.Log.Error("nasPdu is nil")
 		return
 	}
+
+	ranUe.Log.WithFields(logrus.Fields{
+		"nasPduLen":      len(nasPdu),
+		"nasPduData":     fmt.Sprintf("%x", nasPdu),
+		"nasPduData128":  fmt.Sprintf("%x", nasPdu[:min(len(nasPdu), 128)]),
+		"procedureCode":  procedureCode,
+		"initialMessage": initialMessage,
+	}).Infof("[NAS] Received NAS PDU from NGAP")
 
 	if ranUe.AmfUe == nil {
 		// Only the New created RanUE will have no AmfUe in it

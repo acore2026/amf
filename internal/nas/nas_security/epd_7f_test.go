@@ -104,7 +104,11 @@ func TestDecodeULCooperationWithEPD7f(t *testing.T) {
 
 	t.Logf("SpareHalfOctetAndSecurityHeaderType: 0x%02x", ul.SpareHalfOctetAndSecurityHeaderType.Octet)
 	t.Logf("MessageType (field): 0x%02x", ul.MessageType)
-	t.Logf("ULCooperationMessageIdentity: 0x%02x", ul.ULCooperationMessageIdentity.Octet)
+	t.Log("\n✓ ULCooperation消息结构检查:")
+	t.Logf("ExtendedProtocolDiscriminator: 0x%02x", ul.ExtendedProtocolDiscriminator.Octet)
+	t.Logf("SpareHalfOctetAndSecurityHeaderType: 0x%02x", ul.SpareHalfOctetAndSecurityHeaderType.Octet)
+	t.Logf("MessageType: 0x%02x", ul.MessageType)
+	t.Logf("MessageIdentity: 0x%02x", ul.MessageIdentity)
 
 	if ul.MessageType != nas.MsgTypeULCooperation {
 		t.Errorf("❌ MessageType应为0x%02x，实际为0x%02x", nas.MsgTypeULCooperation, ul.MessageType)

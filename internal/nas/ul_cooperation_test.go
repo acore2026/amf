@@ -51,7 +51,7 @@ func TestParseRealUEMessageV2(t *testing.T) {
 	}
 
 	t.Logf("\n✓ 解析成功!")
-	t.Logf("  MessageType: 0x%02x", ul.GetMessageType())
+	t.Logf("  MessageType: 0x%02x", ul.MessageType)
 	t.Logf("  ULApContainer: %v", ul.ULApContainer != nil)
 	if ul.ULApContainer != nil {
 		contents := ul.ULApContainer.GetContents()
@@ -90,8 +90,8 @@ func TestPlainNasDecodeULCooperation(t *testing.T) {
 		t.Fatalf("ULCooperation was not decoded: %#v", msg.GmmMessage)
 	}
 	ul := msg.GmmMessage.ULCooperation
-	if ul.GetMessageType() != acoreNas.MsgTypeULCooperation {
-		t.Fatalf("message type = 0x%02x, want 0x%02x", ul.GetMessageType(), acoreNas.MsgTypeULCooperation)
+	if ul.MessageType != acoreNas.MsgTypeULCooperation {
+		t.Fatalf("message type = 0x%02x, want 0x%02x", ul.MessageType, acoreNas.MsgTypeULCooperation)
 	}
 	if ul.ULApContainer == nil {
 		t.Fatalf("ULApContainer is nil")

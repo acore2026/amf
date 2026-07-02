@@ -12,6 +12,7 @@ import (
 	"github.com/acore2026/nas/nasMessage"
 	"github.com/acore2026/nas/security"
 	"github.com/acore2026/openapi/models"
+	"github.com/sirupsen/logrus"
 )
 
 func Encode(ue *context.AmfUe, msg *nas.Message, accessType models.AccessType) ([]byte, error) {
@@ -130,6 +131,14 @@ func Decode(ue *context.AmfUe, accessType models.AccessType, payload []byte,
 		return nil, false, fmt.Errorf("NAS payload is too short")
 	}
 
+	ue.NASLog.WithFields(logrus.Fields{
+		"payloadLen":     len(payload),
+		"payloadData":    fmt.Sprintf("%x", payload),
+		"payloadData128": fmt.Sprintf("%x", payload[:min(len(payload), 128)]),
+		"initialMessage": initialMessage,
+		"accessType":     accessType,
+	}).Infof("[NAS Security] Decoding NAS message - Original payload")
+
 	ulCountNew := ue.ULCount
 
 	msg = new(nas.Message)
@@ -219,16 +228,64 @@ func Decode(ue *context.AmfUe, accessType models.AccessType, payload []byte,
 		payload = payload[1:]
 	}
 
-	// Special handling for EPD=0x7f (ULCooperation message)
+	// Special handling for EPD=0x7f or EPD=0x7e (ULCooperation message)
 	// This is an extended protocol discriminator for custom NAS messages
-	if len(payload) >= 3 && payload[0] == 0x7f && payload[2] == nas.MsgTypeULCooperation {
-		ue.NASLog.Debugln("Detected ULCooperation message with EPD=0x7f, using DecodeULCooperationV2")
+	// May have additional header that needs to be skipped
+	
+	// Try to find ULCooperation message by searching for MsgTypeULCooperation (0xe1)
+	ulCooperationFound := false
+	
+	ue.NASLog.WithFields(logrus.Fields{
+		"payloadLen":  len(payload),
+		"payloadData": fmt.Sprintf("%x", payload[:min(len(payload), 128)]),
+	}).Debugf("[NAS] Searching for ULCooperation message")
+	
+	// Search for ULCooperation pattern: EPD (0x7f or 0x7e), SecurityHeader, MsgType(0xe1)
+	for i := 0; i <= len(payload)-3; i++ {
+		// Check if this position has ULCooperation message pattern
+		if (payload[i] == 0x7f || payload[i] == 0x7e) && payload[i+2] == nas.MsgTypeULCooperation {
+			ulCooperationFound = true
+			
+			ue.NASLog.WithFields(logrus.Fields{
+				"offset":          i,
+				"epd":             fmt.Sprintf("0x%02x", payload[i]),
+				"securityHeader":  fmt.Sprintf("0x%02x", payload[i+1]),
+				"msgType":         fmt.Sprintf("0x%02x", payload[i+2]),
+				"skippedBytes":    i,
+				"skippedData":     fmt.Sprintf("%x", payload[:i]),
+			}).Infof("[ULCooperation] Found message at offset %d, skipping %d bytes of header", i, i)
+			
+			// Skip the extra header
+			if i > 0 {
+				payload = payload[i:]
+				ue.NASLog.WithFields(logrus.Fields{
+					"newPayloadLen":  len(payload),
+					"newPayloadData": fmt.Sprintf("%x", payload[:min(len(payload), 128)]),
+				}).Infof("[ULCooperation] Payload after skipping header")
+			}
+			break
+		}
+	}
+	
+	if ulCooperationFound {
+		ue.NASLog.WithFields(logrus.Fields{
+			"payloadLen":     len(payload),
+			"payloadData":    fmt.Sprintf("%x", payload),
+			"payloadData128": fmt.Sprintf("%x", payload[:min(len(payload), 128)]),
+			"epd":            fmt.Sprintf("0x%02x", payload[0]),
+			"msgType":        fmt.Sprintf("0x%02x", payload[2]),
+		}).Infoln("Detected ULCooperation message, using DecodeULCooperationV2")
 		msg.GmmMessage = new(nas.GmmMessage)
 		msg.GmmMessage.ULCooperation = nasMessage.NewULCooperation(nas.MsgTypeULCooperation)
 		if err = msg.GmmMessage.ULCooperation.DecodeULCooperationV2(&payload); err != nil {
+			ue.NASLog.WithFields(logrus.Fields{
+				"payloadLen":     len(payload),
+				"payloadData":    fmt.Sprintf("%x", payload),
+				"payloadData128": fmt.Sprintf("%x", payload[:min(len(payload), 128)]),
+			}).Errorf("ULCooperation V2 decode error: %+v", err)
 			return nil, false, fmt.Errorf("ULCooperation V2 decode error: %+v", err)
 		}
-		ue.NASLog.Debugln("Successfully decoded ULCooperation message with EPD=0x7f")
+		ue.NASLog.Infoln("Successfully decoded ULCooperation message")
 	} else {
 		err = msg.PlainNasDecode(&payload)
 		if err != nil {
