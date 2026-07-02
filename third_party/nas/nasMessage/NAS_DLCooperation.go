@@ -30,8 +30,8 @@ type DLCooperationIE struct {
 
 func NewDLCooperation(messageType uint8) (dLCooperation *DLCooperation) {
 	dLCooperation = &DLCooperation{}
-	dLCooperation.MessageType = messageType
-	dLCooperation.MessageIdentity = 0x02
+	dLCooperation.MessageType = 0xe2
+	dLCooperation.MessageIdentity = messageType
 	return dLCooperation
 }
 
