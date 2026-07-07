@@ -139,6 +139,7 @@ type AmfUe struct {
 	onGoing                         map[models.AccessType]*OnGoing
 	UeRadioCapability               string // OCTET string
 	Capability5GMM                  nasType.Capability5GMM
+	CooperationContext              *CooperationContext
 	ConfigurationUpdateIndication   nasType.ConfigurationUpdateIndication
 	ConfigurationUpdateCommandFlags *ConfigurationUpdateCommandFlags
 	/* context related to Paging */
@@ -216,6 +217,13 @@ type N1N2Message struct {
 	Request     models.N1N2MessageTransferRequest
 	Status      models.N1N2MessageTransferCause
 	ResourceUri string
+}
+
+type CooperationContext struct {
+	LastMessageIdentity uint8
+	LastULIEs           map[uint8][][]byte
+	NegotiatedIEs       map[uint8][]byte
+	UpdatedAt           time.Time
 }
 
 type OnGoing struct {

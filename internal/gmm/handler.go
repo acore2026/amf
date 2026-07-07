@@ -96,16 +96,14 @@ func HandleULCooperation(ue *context.AmfUe, anType models.AccessType,
 	ue.GmmLog.Infof("ExtendedProtocolDiscriminator: 0x%02x", ulCooperation.ExtendedProtocolDiscriminator.Octet)
 	ue.GmmLog.Infof("SpareHalfOctetAndSecurityHeaderType: 0x%02x (Spare=0x%02x, SecurityHeaderType=0x%02x)",
 		ulCooperation.SpareHalfOctetAndSecurityHeaderType.Octet,
-		(ulCooperation.SpareHalfOctetAndSecurityHeaderType.Octet >> 4) & 0x0f,
-		ulCooperation.SpareHalfOctetAndSecurityHeaderType.Octet & 0x0f)
+		(ulCooperation.SpareHalfOctetAndSecurityHeaderType.Octet>>4)&0x0f,
+		ulCooperation.SpareHalfOctetAndSecurityHeaderType.Octet&0x0f)
 	ue.GmmLog.Infof("MessageType: 0x%02x", ulCooperation.MessageType)
 	ue.GmmLog.Infof("MessageIdentity: 0x%02x", ulCooperation.MessageIdentity)
 
 	ue.GmmLog.Info("--- Information Elements ---")
-	logULCooperationIE(ue, "ULApContainer", ulCooperation.ULApContainer)
-	ue.GmmLog.Infof("UnknownIEs count: %d", len(ulCooperation.UnknownIEs))
-	for i, ie := range ulCooperation.UnknownIEs {
-		logULCooperationIE(ue, fmt.Sprintf("UnknownIE[%d]", i), ie)
+	for i, ie := range ulCooperation.IEs {
+		logCooperationIE(ue, fmt.Sprintf("IE[%d]", i), ie)
 	}
 
 	ranUe := ue.RanUe[anType]
@@ -113,26 +111,114 @@ func HandleULCooperation(ue *context.AmfUe, anType models.AccessType,
 		return fmt.Errorf("RanUe is nil for access type %s", anType)
 	}
 
-	dlApContainer := nasMessage.NewDLCooperationIE(nasMessage.DLCooperationDLApContainerType)
-	
-	if ulCooperation.ULApContainer != nil {
-		dlApContainer.SetLen(ulCooperation.ULApContainer.GetLen())
-		dlApContainer.SetContainerType(ulCooperation.ULApContainer.GetContainerType())
-		dlApContainer.SetContainerContentLength(ulCooperation.ULApContainer.GetContainerContentLength())
-		dlApContainer.SetContainerTypePTI(ulCooperation.ULApContainer.GetContainerTypePTI())
-		dlApContainer.SetContainerContent(ulCooperation.ULApContainer.GetContainerContent())
-		dlApContainer.SetContents(ulCooperation.ULApContainer.GetContents())
-	} else {
-		dlApContainer.SetLen(0)
+	dlIEs, err := processULCooperationIEs(ue, anType, ulCooperation)
+	if err != nil {
+		return err
+	}
+	if len(dlIEs) == 0 {
+		ue.GmmLog.Info("No DL Cooperation response IEs generated")
+		return nil
 	}
 
 	ue.GmmLog.Info("Sending DL Cooperation response")
-	gmm_message.SendDLCooperation(ranUe, dlApContainer)
+	gmm_message.SendDLCooperation(ranUe, ulCooperation.MessageIdentity, dlIEs)
 
 	return nil
 }
 
-func logULCooperationIE(ue *context.AmfUe, name string, ie *nasMessage.ULCooperationIE) {
+type cooperationIEHandler func(ue *context.AmfUe, anType models.AccessType,
+	ie *nasMessage.CooperationIE,
+) ([]*nasMessage.CooperationIE, error)
+
+var ulCooperationIEHandlers = map[uint8]cooperationIEHandler{
+	nasMessage.CooperationIEType10: handleULCooperationIE10,
+	nasMessage.CooperationIEType18: handleULCooperationIE18,
+	nasMessage.CooperationIEType71: handleULCooperationIE71,
+}
+
+func processULCooperationIEs(ue *context.AmfUe, anType models.AccessType,
+	ulCooperation *nasMessage.ULCooperation,
+) ([]*nasMessage.CooperationIE, error) {
+	if ue.CooperationContext == nil {
+		ue.CooperationContext = &context.CooperationContext{}
+	}
+	ue.CooperationContext.LastMessageIdentity = ulCooperation.MessageIdentity
+	ue.CooperationContext.LastULIEs = make(map[uint8][][]byte)
+	if ue.CooperationContext.NegotiatedIEs == nil {
+		ue.CooperationContext.NegotiatedIEs = make(map[uint8][]byte)
+	}
+	ue.CooperationContext.UpdatedAt = time.Now()
+
+	dlIEs := make([]*nasMessage.CooperationIE, 0)
+	for _, ie := range ulCooperation.IEs {
+		if ie == nil {
+			continue
+		}
+		contents := ie.GetContents()
+		ue.CooperationContext.LastULIEs[ie.GetIei()] = append(
+			ue.CooperationContext.LastULIEs[ie.GetIei()],
+			cloneBytes(contents),
+		)
+
+		handler, ok := ulCooperationIEHandlers[ie.GetIei()]
+		if !ok {
+			ue.GmmLog.Warnf("Ignoring unknown UL Cooperation IEI 0x%02x", ie.GetIei())
+			continue
+		}
+		responseIEs, err := handler(ue, anType, ie)
+		if err != nil {
+			return nil, err
+		}
+		dlIEs = append(dlIEs, responseIEs...)
+	}
+	return dlIEs, nil
+}
+
+func handleULCooperationIE10(ue *context.AmfUe, _ models.AccessType,
+	ie *nasMessage.CooperationIE,
+) ([]*nasMessage.CooperationIE, error) {
+	contents := ie.GetContents()
+	storeNegotiatedCooperationIE(ue, ie.GetIei(), contents)
+	response, err := nasMessage.NewCooperationIE(ie.GetIei(), contents)
+	if err != nil {
+		return nil, err
+	}
+	return []*nasMessage.CooperationIE{response}, nil
+}
+
+func handleULCooperationIE18(ue *context.AmfUe, _ models.AccessType,
+	ie *nasMessage.CooperationIE,
+) ([]*nasMessage.CooperationIE, error) {
+	storeNegotiatedCooperationIE(ue, ie.GetIei(), ie.GetContents())
+	return nil, nil
+}
+
+func handleULCooperationIE71(ue *context.AmfUe, _ models.AccessType,
+	ie *nasMessage.CooperationIE,
+) ([]*nasMessage.CooperationIE, error) {
+	contents := ie.GetContents()
+	storeNegotiatedCooperationIE(ue, ie.GetIei(), contents)
+	response, err := nasMessage.NewCooperationIE(ie.GetIei(), contents)
+	if err != nil {
+		return nil, err
+	}
+	return []*nasMessage.CooperationIE{response}, nil
+}
+
+func storeNegotiatedCooperationIE(ue *context.AmfUe, iei uint8, contents []byte) {
+	if ue.CooperationContext.NegotiatedIEs == nil {
+		ue.CooperationContext.NegotiatedIEs = make(map[uint8][]byte)
+	}
+	ue.CooperationContext.NegotiatedIEs[iei] = cloneBytes(contents)
+}
+
+func cloneBytes(in []byte) []byte {
+	out := make([]byte, len(in))
+	copy(out, in)
+	return out
+}
+
+func logCooperationIE(ue *context.AmfUe, name string, ie *nasMessage.CooperationIE) {
 	if ie == nil {
 		ue.GmmLog.Infof("  %s: <nil>", name)
 		return
@@ -141,7 +227,7 @@ func logULCooperationIE(ue *context.AmfUe, name string, ie *nasMessage.ULCoopera
 	ue.GmmLog.Infof("  %s:", name)
 	ue.GmmLog.Infof("    IEI: 0x%02x", ie.GetIei())
 	ue.GmmLog.Infof("    Length: %d", ie.GetLen())
-	
+
 	if len(contents) > 0 && contents[0] == 0x7b {
 		ue.GmmLog.Infof("    Contents (JSON): %s", string(contents))
 	} else {
@@ -2557,16 +2643,16 @@ func HandleStatus5GMM(ue *context.AmfUe, anType models.AccessType, status5GMM *n
 	}
 
 	ue.GmmLog.Info("=== Status5GMM Message Details ===")
-	ue.GmmLog.Infof("  Extended Protocol Discriminator: 0x%02x", 
+	ue.GmmLog.Infof("  Extended Protocol Discriminator: 0x%02x",
 		status5GMM.ExtendedProtocolDiscriminator.GetExtendedProtocolDiscriminator())
-	ue.GmmLog.Infof("  Security Header Type: 0x%02x", 
+	ue.GmmLog.Infof("  Security Header Type: 0x%02x",
 		status5GMM.SpareHalfOctetAndSecurityHeaderType.GetSecurityHeaderType())
-	ue.GmmLog.Infof("  Message Identity (Problematic Message Type): 0x%02x", 
+	ue.GmmLog.Infof("  Message Identity (Problematic Message Type): 0x%02x",
 		status5GMM.STATUSMessageIdentity5GMM.GetMessageType())
-	
+
 	cause := status5GMM.Cause5GMM.GetCauseValue()
 	ue.GmmLog.Infof("  Cause Value: %s (0x%02x)", nasMessage.Cause5GMMToString(cause), cause)
 	ue.GmmLog.Error("Error condition reported by UE")
-	
+
 	return nil
 }

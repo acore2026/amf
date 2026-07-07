@@ -478,8 +478,8 @@ func SendSecurityModeCommand(ue *context.RanUe, accessType models.AccessType, ea
 	}
 }
 
-func SendDLCooperation(ue *context.RanUe,
-	dlApContainer *nasMessage.DLCooperationIE,
+func SendDLCooperation(ue *context.RanUe, messageIdentity uint8,
+	ies []*nasMessage.CooperationIE,
 ) {
 	if ue == nil {
 		logger.GmmLog.Error("SendDLCooperation: RanUe is nil")
@@ -495,14 +495,14 @@ func SendDLCooperation(ue *context.RanUe,
 	}
 	amfUe := ue.AmfUe
 	ran := ue.Ran
-	
+
 	amfUe.GmmLog.Info("=== SendDLCooperation ===")
 	amfUe.GmmLog.Infof("  AMF UE NGAP ID: %d", ue.AmfUeNgapId)
 	amfUe.GmmLog.Infof("  RAN UE NGAP ID: %d", ue.RanUeNgapId)
 	amfUe.GmmLog.Infof("  Access Type: %s", ran.AnType)
 	amfUe.GmmLog.Infof("  Security Context Available: %v", amfUe.SecurityContextAvailable)
 
-	nasMsg, err := BuildDLCooperation(amfUe, ran.AnType, dlApContainer)
+	nasMsg, err := BuildDLCooperation(amfUe, ran.AnType, messageIdentity, ies)
 	if err != nil {
 		amfUe.GmmLog.Errorf("BuildDLCooperation failed: %v", err)
 		return

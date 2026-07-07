@@ -708,7 +708,7 @@ func includeConfiguredNssaiCheck(ue *context.AmfUe) bool {
 }
 
 func BuildDLCooperation(ue *context.AmfUe, accessType models.AccessType,
-	dlApContainer *nasMessage.DLCooperationIE,
+	messageIdentity uint8, ies []*nasMessage.CooperationIE,
 ) ([]byte, error) {
 	m := nas.NewMessage()
 	m.GmmMessage = nas.NewGmmMessage()
@@ -723,35 +723,37 @@ func BuildDLCooperation(ue *context.AmfUe, accessType models.AccessType,
 	dlCooperation.SetExtendedProtocolDiscriminator(nasMessage.Epd5GSMobilityManagementMessage)
 	dlCooperation.SpareHalfOctetAndSecurityHeaderType.SetSecurityHeaderType(nas.SecurityHeaderTypePlainNas)
 	dlCooperation.SpareHalfOctetAndSecurityHeaderType.SetSpareHalfOctet(0)
+	dlCooperation.MessageIdentity = messageIdentity
 
-	if dlApContainer != nil {
-		dlCooperation.DLApContainer = dlApContainer
+	for _, ie := range ies {
+		if ie == nil {
+			continue
+		}
+		if !isAllowedDLCooperationIE(ie.GetIei()) {
+			return nil, fmt.Errorf("DLCooperation IEI 0x%02x is not allowed", ie.GetIei())
+		}
+		if err := dlCooperation.AddIE(ie.GetIei(), ie.GetContents()); err != nil {
+			return nil, err
+		}
 	}
 
 	m.GmmMessage.DLCooperation = dlCooperation
 
 	ue.GmmLog.Info("=== DLCooperation Message to Send ===")
-	ue.GmmLog.Infof("  Extended Protocol Discriminator: 0x%02x", 
+	ue.GmmLog.Infof("  Extended Protocol Discriminator: 0x%02x",
 		dlCooperation.ExtendedProtocolDiscriminator.GetExtendedProtocolDiscriminator())
-	ue.GmmLog.Infof("  Security Header Type: 0x%02x", 
+	ue.GmmLog.Infof("  Security Header Type: 0x%02x",
 		dlCooperation.SpareHalfOctetAndSecurityHeaderType.GetSecurityHeaderType())
 	ue.GmmLog.Infof("  Message Type: 0x%02x", dlCooperation.MessageType)
 	ue.GmmLog.Infof("  Message Identity: 0x%02x", dlCooperation.MessageIdentity)
-	
-	if dlCooperation.DLApContainer != nil {
-		logDLCooperationIE(ue, "DLApContainer", dlCooperation.DLApContainer)
-	} else {
-		ue.GmmLog.Info("  DLApContainer: <nil>")
-	}
-	
-	ue.GmmLog.Infof("  UnknownIEs count: %d", len(dlCooperation.UnknownIEs))
-	for i, ie := range dlCooperation.UnknownIEs {
-		logDLCooperationIE(ue, fmt.Sprintf("UnknownIE[%d]", i), ie)
+
+	for i, ie := range dlCooperation.IEs {
+		logDLCooperationIE(ue, fmt.Sprintf("IE[%d]", i), ie)
 	}
 
 	ue.GmmLog.Info("=== Security Header Configuration ===")
 	ue.GmmLog.Infof("  Protocol Discriminator: 0x%02x", m.SecurityHeader.ProtocolDiscriminator)
-	ue.GmmLog.Infof("  Security Header Type: 0x%02x (%s)", 
+	ue.GmmLog.Infof("  Security Header Type: 0x%02x (%s)",
 		m.SecurityHeader.SecurityHeaderType,
 		securityTypeToString(m.SecurityHeader.SecurityHeaderType))
 	ue.GmmLog.Infof("  Integrity Protection: Enabled")
@@ -766,7 +768,7 @@ func BuildDLCooperation(ue *context.AmfUe, accessType models.AccessType,
 	ue.GmmLog.Info("=== Encoded DLCooperation Message ===")
 	ue.GmmLog.Infof("  Total length: %d bytes", len(encodedMsg))
 	ue.GmmLog.Infof("  Hex dump: %s", hex.EncodeToString(encodedMsg))
-	
+
 	if len(encodedMsg) > 7 {
 		ue.GmmLog.Info("  Message structure:")
 		ue.GmmLog.Infof("    Security header (0-6): %s", hex.EncodeToString(encodedMsg[:7]))
@@ -774,6 +776,15 @@ func BuildDLCooperation(ue *context.AmfUe, accessType models.AccessType,
 	}
 
 	return encodedMsg, nil
+}
+
+func isAllowedDLCooperationIE(iei uint8) bool {
+	switch iei {
+	case nasMessage.CooperationIEType10, nasMessage.CooperationIEType71:
+		return true
+	default:
+		return false
+	}
 }
 
 func BuildStatus5GMM(ue *context.AmfUe, accessType models.AccessType, cause uint8) ([]byte, error) {
@@ -1004,7 +1015,7 @@ func BuildConfigurationUpdateCommand(ue *context.AmfUe, anType models.AccessType
 	return b, err, needTimer
 }
 
-func logDLCooperationIE(ue *context.AmfUe, name string, ie *nasMessage.DLCooperationIE) {
+func logDLCooperationIE(ue *context.AmfUe, name string, ie *nasMessage.CooperationIE) {
 	if ie == nil {
 		ue.GmmLog.Infof("  %s: <nil>", name)
 		return
@@ -1013,11 +1024,7 @@ func logDLCooperationIE(ue *context.AmfUe, name string, ie *nasMessage.DLCoopera
 	ue.GmmLog.Infof("  %s:", name)
 	ue.GmmLog.Infof("    IEI: 0x%02x", ie.GetIei())
 	ue.GmmLog.Infof("    Length: %d", ie.GetLen())
-	ue.GmmLog.Infof("    ContainerType: 0x%04x", ie.GetContainerType())
-	ue.GmmLog.Infof("    ContainerContentLength: %d", ie.GetContainerContentLength())
-	ue.GmmLog.Infof("    ContainerTypePTI: 0x%02x", ie.GetContainerTypePTI())
-	ue.GmmLog.Infof("    ContainerContent: 0x%08x", ie.GetContainerContent())
-	
+
 	if len(contents) > 0 && contents[0] == 0x7b {
 		ue.GmmLog.Infof("    Contents (JSON): %s", string(contents))
 	} else {
