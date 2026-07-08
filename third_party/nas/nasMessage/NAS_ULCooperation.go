@@ -113,8 +113,17 @@ func (a *ULCooperation) decode(byteArray *[]byte) error {
 	a.IEs = nil
 	a.ULApContainer = nil
 	a.UnknownIEs = nil
+	// MessageIdentity == 0x01 uses new TLV format (1-byte length)
+	// Other values use legacy AP Container format (2-byte uint16 length)
+	legacy := a.MessageIdentity != 0x01
 	for buffer.Len() > 0 {
-		ie, err := decodeCooperationIE(buffer, "ULCooperation")
+		var ie *CooperationIE
+		var err error
+		if legacy {
+			ie, err = decodeCooperationIELegacy(buffer, "ULCooperation")
+		} else {
+			ie, err = decodeCooperationIE(buffer, "ULCooperation")
+		}
 		if err != nil {
 			return err
 		}

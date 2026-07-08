@@ -202,6 +202,7 @@ func handleULCooperationIE71(ue *context.AmfUe, _ models.AccessType,
 	if err != nil {
 		return nil, err
 	}
+	response.LegacyLen = ie.LegacyLen
 	return []*nasMessage.CooperationIE{response}, nil
 }
 

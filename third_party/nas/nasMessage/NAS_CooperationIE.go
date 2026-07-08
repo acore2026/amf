@@ -13,9 +13,10 @@ const (
 )
 
 type CooperationIE struct {
-	Iei      uint8
-	Len      uint8
-	Contents []uint8
+	Iei       uint8
+	Len       uint8
+	LegacyLen uint16 // non-zero when using legacy 2-byte length format
+	Contents  []uint8
 }
 
 func NewCooperationIE(iei uint8, contents []uint8) (*CooperationIE, error) {
@@ -193,4 +194,66 @@ func getCooperationIEs(ies []*CooperationIE, iei uint8) []*CooperationIE {
 		}
 	}
 	return matches
+}
+
+// --- Legacy AP Container format (2-byte uint16 length) ---
+
+func encodeCooperationIELegacy(buffer *bytes.Buffer, messageName string, ie *CooperationIE) error {
+	if ie == nil {
+		return nil
+	}
+	legacyLen := ie.LegacyLen
+	if legacyLen == 0 {
+		legacyLen = uint16(len(ie.Contents))
+	}
+	if int(legacyLen) != len(ie.Contents) && ie.LegacyLen != 0 {
+		return fmt.Errorf("NAS encode error (%s/iei 0x%02x): legacy length %d does not match contents length %d",
+			messageName, ie.Iei, legacyLen, len(ie.Contents))
+	}
+	if err := binary.Write(buffer, binary.BigEndian, ie.Iei); err != nil {
+		return fmt.Errorf("NAS encode error (%s/iei): %w", messageName, err)
+	}
+	if err := binary.Write(buffer, binary.BigEndian, legacyLen); err != nil {
+		return fmt.Errorf("NAS encode error (%s/len): %w", messageName, err)
+	}
+	if legacyLen == 0 {
+		return nil
+	}
+	if err := binary.Write(buffer, binary.BigEndian, ie.Contents); err != nil {
+		return fmt.Errorf("NAS encode error (%s/contents): %w", messageName, err)
+	}
+	return nil
+}
+
+func decodeCooperationIELegacy(buffer *bytes.Buffer, messageName string) (*CooperationIE, error) {
+	if buffer.Len() < 3 {
+		return nil, fmt.Errorf("NAS decode error (%s/legacy IE): remaining length %d", messageName, buffer.Len())
+	}
+	var iei uint8
+	if err := binary.Read(buffer, binary.BigEndian, &iei); err != nil {
+		return nil, fmt.Errorf("NAS decode error (%s/iei): %w", messageName, err)
+	}
+	var length uint16
+	if err := binary.Read(buffer, binary.BigEndian, &length); err != nil {
+		return nil, fmt.Errorf("NAS decode error (%s/len): %w", messageName, err)
+	}
+	if int(length) > buffer.Len() {
+		return nil, fmt.Errorf("invalid IE length (%s/iei 0x%02x): %d exceeds remaining %d",
+			messageName, iei, length, buffer.Len())
+	}
+	contents := make([]uint8, length)
+	if length > 0 {
+		if err := binary.Read(buffer, binary.BigEndian, contents); err != nil {
+			return nil, fmt.Errorf("NAS decode error (%s/iei 0x%02x): %w", messageName, iei, err)
+		}
+	}
+	ie := &CooperationIE{
+		Iei:       iei,
+		LegacyLen: length,
+		Contents:  contents,
+	}
+	if length <= 255 {
+		ie.Len = uint8(length)
+	}
+	return ie, nil
 }

@@ -78,8 +78,17 @@ func (a *DLCooperation) EncodeDLCooperation(buffer *bytes.Buffer) error {
 		}
 		ies = append(ies, a.UnknownIEs...)
 	}
+	// MessageIdentity == 0x01 uses new TLV format (1-byte length)
+	// Other values use legacy AP Container format (2-byte uint16 length)
+	legacy := a.MessageIdentity != 0x01
 	for _, ie := range ies {
-		if err := encodeCooperationIE(buffer, "DLCooperation", ie); err != nil {
+		var err error
+		if legacy {
+			err = encodeCooperationIELegacy(buffer, "DLCooperation", ie)
+		} else {
+			err = encodeCooperationIE(buffer, "DLCooperation", ie)
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -104,8 +113,17 @@ func (a *DLCooperation) DecodeDLCooperation(byteArray *[]byte) error {
 	a.IEs = nil
 	a.DLApContainer = nil
 	a.UnknownIEs = nil
+	// MessageIdentity == 0x01 uses new TLV format (1-byte length)
+	// Other values use legacy AP Container format (2-byte uint16 length)
+	legacy := a.MessageIdentity != 0x01
 	for buffer.Len() > 0 {
-		ie, err := decodeCooperationIE(buffer, "DLCooperation")
+		var ie *CooperationIE
+		var err error
+		if legacy {
+			ie, err = decodeCooperationIELegacy(buffer, "DLCooperation")
+		} else {
+			ie, err = decodeCooperationIE(buffer, "DLCooperation")
+		}
 		if err != nil {
 			return err
 		}
@@ -113,6 +131,10 @@ func (a *DLCooperation) DecodeDLCooperation(byteArray *[]byte) error {
 		a.indexIE(ie)
 	}
 	return nil
+}
+
+func (a *DLCooperation) IndexIE(ie *CooperationIE) {
+	a.indexIE(ie)
 }
 
 func (a *DLCooperation) indexIE(ie *CooperationIE) {

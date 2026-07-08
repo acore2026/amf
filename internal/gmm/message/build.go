@@ -733,9 +733,8 @@ func BuildDLCooperation(ue *context.AmfUe, accessType models.AccessType,
 		if !isAllowedDLCooperationIE(ie.GetIei()) {
 			return nil, fmt.Errorf("DLCooperation IEI 0x%02x is not allowed", ie.GetIei())
 		}
-		if err := dlCooperation.AddIE(ie.GetIei(), ie.GetContents()); err != nil {
-			return nil, err
-		}
+		dlCooperation.IEs = append(dlCooperation.IEs, ie)
+		dlCooperation.IndexIE(ie)
 	}
 
 	m.GmmMessage.DLCooperation = dlCooperation
