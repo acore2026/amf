@@ -1,6 +1,7 @@
 package message
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -749,6 +750,26 @@ func BuildDLCooperation(ue *context.AmfUe, accessType models.AccessType,
 
 	for i, ie := range dlCooperation.IEs {
 		logDLCooperationIE(ue, fmt.Sprintf("IE[%d]", i), ie)
+	}
+
+	plainBuf := new(bytes.Buffer)
+	if err := dlCooperation.EncodeDLCooperation(plainBuf); err != nil {
+		ue.GmmLog.Errorf("Failed to encode DLCooperation plain NAS: %v", err)
+	} else {
+		plainBytes := plainBuf.Bytes()
+		ue.GmmLog.Info("=== DLCooperation Plain NAS (before security) ===")
+		ue.GmmLog.Infof("  Total length: %d bytes", len(plainBytes))
+		ue.GmmLog.Infof("  Hex: %s", hex.EncodeToString(plainBytes))
+		if len(plainBytes) >= 4 {
+			ue.GmmLog.Info("  Message structure:")
+			ue.GmmLog.Infof("    EPD: 0x%02x", plainBytes[0])
+			ue.GmmLog.Infof("    SecurityHeaderType: 0x%02x", plainBytes[1])
+			ue.GmmLog.Infof("    MessageType: 0x%02x", plainBytes[2])
+			ue.GmmLog.Infof("    MessageIdentity: 0x%02x", plainBytes[3])
+			if len(plainBytes) > 4 {
+				ue.GmmLog.Infof("    IEs (4+): %s", hex.EncodeToString(plainBytes[4:]))
+			}
+		}
 	}
 
 	ue.GmmLog.Info("=== Security Header Configuration ===")
