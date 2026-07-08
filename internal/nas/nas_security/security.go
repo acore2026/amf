@@ -131,6 +131,9 @@ func Decode(ue *context.AmfUe, accessType models.AccessType, payload []byte,
 		return nil, false, fmt.Errorf("NAS payload is too short")
 	}
 
+	originalPayload := make([]byte, len(payload))
+	copy(originalPayload, payload)
+
 	ue.NASLog.WithFields(logrus.Fields{
 		"payloadLen":     len(payload),
 		"payloadData":    fmt.Sprintf("%x", payload),
@@ -295,6 +298,16 @@ func Decode(ue *context.AmfUe, accessType models.AccessType, payload []byte,
 		err = msg.PlainNasDecode(&payload)
 		if err != nil {
 			return nil, false, err
+		}
+		
+		if msg.GmmMessage != nil && msg.GmmHeader.GetMessageType() == nas.MsgTypeStatus5GMM {
+			ue.NASLog.WithFields(logrus.Fields{
+				"msgType":           "Status5GMM (0x64)",
+				"plainPayloadLen":   len(payload),
+				"plainPayloadHex":   fmt.Sprintf("%x", payload),
+				"originalPayloadLen": len(originalPayload),
+				"originalPayloadHex": fmt.Sprintf("%x", originalPayload),
+			}).Infof("[Status5GMM] Full NAS message dump - Original (with security) and Plain (decrypted)")
 		}
 	}
 
