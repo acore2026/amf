@@ -137,6 +137,54 @@ func TestInitialRegistrationProcedure(t *testing.T) {
 
 	require.True(t, amfUe.State[models.AccessType__3_GPP_ACCESS].Is(amf_context.Registered))
 	require.Nil(t, amfUe.T3550)
+
+	ulCooperation := []byte{
+		nasMessage.Epd5GSMobilityManagementMessage, 0x00, nas.MsgTypeULCooperation, 0x01,
+		0x10, 0x01, 0x01,
+		0x18, 0x01, 0x01,
+		0x71, 0x02, 0xaa, 0xbb,
+	}
+	protectedULCooperation := encodeUplinkNas(
+		t,
+		amfUe,
+		models.AccessType__3_GPP_ACCESS,
+		ulCooperation,
+		nas.SecurityHeaderTypeIntegrityProtectedAndCiphered,
+	)
+	beforeCooperationResponses := len(connStub.MsgList)
+	handleUplinkNASTransportMain(
+		ran,
+		ranUe,
+		&ngapType.NASPDU{Value: protectedULCooperation},
+		nil,
+	)
+
+	require.Greater(t, len(connStub.MsgList), beforeCooperationResponses)
+	cooperationRaw := lastConnMessage(t, connStub)
+	cooperationPdu, cooperationNas := decodeNgapNas(
+		t,
+		cooperationRaw,
+		amfUe,
+		models.AccessType__3_GPP_ACCESS,
+	)
+	require.Equal(t, int64(ngapType.ProcedureCodeDownlinkNASTransport), cooperationPdu.InitiatingMessage.ProcedureCode.Value)
+	require.NotNil(t, cooperationNas.GmmMessage)
+	require.NotNil(t, cooperationNas.GmmMessage.DLCooperation)
+
+	dlCooperation := cooperationNas.GmmMessage.DLCooperation
+	require.Equal(t, uint8(0x01), dlCooperation.MessageIdentity)
+	require.Equal(t, []uint8{0x01}, dlCooperation.GetIE(0x10).GetContents())
+	require.Equal(t, []uint8{0xaa, 0xbb}, dlCooperation.GetIE(0x71).GetContents())
+	require.Nil(t, dlCooperation.GetIE(0x18))
+
+	require.NotNil(t, amfUe.CooperationContext)
+	require.Equal(t, uint8(0x01), amfUe.CooperationContext.LastMessageIdentity)
+	require.Equal(t, [][]byte{{0x01}}, amfUe.CooperationContext.LastULIEs[0x10])
+	require.Equal(t, [][]byte{{0x01}}, amfUe.CooperationContext.LastULIEs[0x18])
+	require.Equal(t, [][]byte{{0xaa, 0xbb}}, amfUe.CooperationContext.LastULIEs[0x71])
+	require.Equal(t, []byte{0x01}, amfUe.CooperationContext.NegotiatedIEs[0x10])
+	require.Equal(t, []byte{0x01}, amfUe.CooperationContext.NegotiatedIEs[0x18])
+	require.Equal(t, []byte{0xaa, 0xbb}, amfUe.CooperationContext.NegotiatedIEs[0x71])
 }
 
 type registrationMockServers struct {
