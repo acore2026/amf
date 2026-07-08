@@ -28,6 +28,19 @@ func NewCooperationIE(iei uint8, contents []uint8) (*CooperationIE, error) {
 	return ie, nil
 }
 
+func NewCooperationIELegacy(iei uint8, contents []uint8) *CooperationIE {
+	ie := &CooperationIE{
+		Iei:       iei,
+		LegacyLen: uint16(len(contents)),
+		Contents:  make([]uint8, len(contents)),
+	}
+	copy(ie.Contents, contents)
+	if len(contents) <= 255 {
+		ie.Len = uint8(len(contents))
+	}
+	return ie
+}
+
 func (a *CooperationIE) GetIei() uint8 {
 	return a.Iei
 }

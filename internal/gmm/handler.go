@@ -198,11 +198,16 @@ func handleULCooperationIE71(ue *context.AmfUe, _ models.AccessType,
 ) ([]*nasMessage.CooperationIE, error) {
 	contents := ie.GetContents()
 	storeNegotiatedCooperationIE(ue, ie.GetIei(), contents)
-	response, err := nasMessage.NewCooperationIE(ie.GetIei(), contents)
-	if err != nil {
-		return nil, err
+	var response *nasMessage.CooperationIE
+	if ie.LegacyLen > 0 {
+		response = nasMessage.NewCooperationIELegacy(ie.GetIei(), contents)
+	} else {
+		var err error
+		response, err = nasMessage.NewCooperationIE(ie.GetIei(), contents)
+		if err != nil {
+			return nil, err
+		}
 	}
-	response.LegacyLen = ie.LegacyLen
 	return []*nasMessage.CooperationIE{response}, nil
 }
 
