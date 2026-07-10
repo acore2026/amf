@@ -224,6 +224,7 @@ type CooperationContext struct {
 	LastULIEs           map[uint8][][]byte
 	NegotiatedIEs       map[uint8][]byte
 	UpdatedAt           time.Time
+	APContainer         *APContainerState
 }
 
 type OnGoing struct {
@@ -318,6 +319,7 @@ func (ue *AmfUe) CmIdle(anType models.AccessType) bool {
 }
 
 func (ue *AmfUe) Remove() {
+	ue.StopAPContainerReassemblyTimers()
 	ue.StopT3513()
 	ue.StopT3565()
 	ue.StopT3560()
