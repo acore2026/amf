@@ -1,6 +1,7 @@
 package context
 
 import (
+	"sync"
 	"testing"
 	"time"
 )
@@ -81,4 +82,23 @@ func TestStopAPContainerReassemblyTimers(t *testing.T) {
 	if timer.Stop() {
 		t.Fatal("timer was still active after cleanup")
 	}
+}
+
+func TestCooperationContextInitializationAndTimerCleanupConcurrent(t *testing.T) {
+	ue := &AmfUe{}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			ue.GetOrCreateCooperationContext()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			ue.StopAPContainerReassemblyTimers()
+		}
+	}()
+	wg.Wait()
 }

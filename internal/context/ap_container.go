@@ -147,7 +147,9 @@ func (c *CooperationContext) CompletedAPContainers() map[uint16]CompletedAPConta
 }
 
 func (ue *AmfUe) StopAPContainerReassemblyTimers() {
+	ue.Lock.Lock()
 	ctx := ue.CooperationContext
+	ue.Lock.Unlock()
 	if ctx == nil || ctx.APContainer == nil {
 		return
 	}
