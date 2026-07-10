@@ -111,17 +111,22 @@ func HandleULCooperation(ue *context.AmfUe, anType models.AccessType,
 		return fmt.Errorf("RanUe is nil for access type %s", anType)
 	}
 
-	dlIEs, err := processULCooperationIEs(ue, anType, ulCooperation)
+	dlMessages, err := processULCooperationIEs(ue, anType, ulCooperation)
 	if err != nil {
 		return err
 	}
-	if len(dlIEs) == 0 {
+	if len(dlMessages) == 0 {
 		ue.GmmLog.Info("No DL Cooperation response IEs generated")
 		return nil
 	}
 
-	ue.GmmLog.Info("Sending DL Cooperation response")
-	gmm_message.SendDLCooperation(ranUe, ulCooperation.MessageIdentity, dlIEs)
+	for _, ies := range dlMessages {
+		if len(ies) == 0 {
+			continue
+		}
+		ue.GmmLog.Info("Sending DL Cooperation response")
+		gmm_message.SendDLCooperation(ranUe, ulCooperation.MessageIdentity, ies)
+	}
 
 	return nil
 }
@@ -133,45 +138,115 @@ type cooperationIEHandler func(ue *context.AmfUe, anType models.AccessType,
 var ulCooperationIEHandlers = map[uint8]cooperationIEHandler{
 	nasMessage.CooperationIEType10: handleULCooperationIE10,
 	nasMessage.CooperationIEType18: handleULCooperationIE18,
-	nasMessage.CooperationIEType71: handleULCooperationIE71,
 }
 
 func processULCooperationIEs(ue *context.AmfUe, anType models.AccessType,
 	ulCooperation *nasMessage.ULCooperation,
-) ([]*nasMessage.CooperationIE, error) {
-	if ue.CooperationContext == nil {
-		ue.CooperationContext = &context.CooperationContext{}
-	}
-	ue.CooperationContext.LastMessageIdentity = ulCooperation.MessageIdentity
-	ue.CooperationContext.LastULIEs = make(map[uint8][][]byte)
-	if ue.CooperationContext.NegotiatedIEs == nil {
-		ue.CooperationContext.NegotiatedIEs = make(map[uint8][]byte)
-	}
-	ue.CooperationContext.UpdatedAt = time.Now()
+) ([][]*nasMessage.CooperationIE, error) {
+	cooperationContext := ue.GetOrCreateCooperationContext()
+	cooperationContext.LastMessageIdentity = ulCooperation.MessageIdentity
+	cooperationContext.LastULIEs = make(map[uint8][][]byte)
+	cooperationContext.UpdatedAt = time.Now()
 
-	dlIEs := make([]*nasMessage.CooperationIE, 0)
+	ordinaryDLIEs := make([]*nasMessage.CooperationIE, 0)
+	apIEs := ulCooperation.GetIEs(nasMessage.CooperationIEType71)
 	for _, ie := range ulCooperation.IEs {
 		if ie == nil {
 			continue
 		}
 		contents := ie.GetContents()
-		ue.CooperationContext.LastULIEs[ie.GetIei()] = append(
-			ue.CooperationContext.LastULIEs[ie.GetIei()],
+		cooperationContext.LastULIEs[ie.GetIei()] = append(
+			cooperationContext.LastULIEs[ie.GetIei()],
 			cloneBytes(contents),
 		)
+		if ie.GetIei() == nasMessage.CooperationIEType71 {
+			continue
+		}
 
 		handler, ok := ulCooperationIEHandlers[ie.GetIei()]
 		if !ok {
-			ue.GmmLog.Warnf("Ignoring unknown UL Cooperation IEI 0x%02x", ie.GetIei())
+			if ue.GmmLog != nil {
+				ue.GmmLog.Warnf("Ignoring unknown UL Cooperation IEI 0x%02x", ie.GetIei())
+			}
 			continue
 		}
 		responseIEs, err := handler(ue, anType, ie)
 		if err != nil {
 			return nil, err
 		}
-		dlIEs = append(dlIEs, responseIEs...)
+		ordinaryDLIEs = append(ordinaryDLIEs, responseIEs...)
 	}
-	return dlIEs, nil
+
+	if len(apIEs) == 0 {
+		return groupOrdinaryDLCooperationIEs(ordinaryDLIEs), nil
+	}
+	if len(apIEs) > 1 {
+		if ue.GmmLog != nil {
+			ue.GmmLog.Warnf("Rejecting %d AP Container IEs in one UL Cooperation", len(apIEs))
+		}
+		return groupOrdinaryDLCooperationIEs(ordinaryDLIEs), nil
+	}
+
+	fragment, err := nasMessage.DecodeAPContainer(apIEs[0].GetContents())
+	if err != nil {
+		if ue.GmmLog != nil {
+			ue.GmmLog.Warnf(
+				"Dropping invalid UL AP Container access=%s messageIdentity=0x%02x rawLength=%d: %v",
+				anType, ulCooperation.MessageIdentity, len(apIEs[0].GetContents()), err,
+			)
+		}
+		return groupOrdinaryDLCooperationIEs(ordinaryDLIEs), nil
+	}
+	complete, err := AddULAPContainerFragment(
+		ue, anType, ulCooperation.MessageIdentity, fragment, time.Now(),
+	)
+	if err != nil {
+		logAPContainerDrop(ue, anType, ulCooperation.MessageIdentity, fragment, err)
+		return groupOrdinaryDLCooperationIEs(ordinaryDLIEs), nil
+	}
+	if complete == nil {
+		return groupOrdinaryDLCooperationIEs(ordinaryDLIEs), nil
+	}
+
+	cooperationContext.StoreCompletedAPContainer(context.CompletedAPContainer{
+		ContainerType:      complete.ContainerType,
+		ContainerTypePTI:   complete.ContainerTypePTI,
+		ContainerPayloadID: complete.ContainerPayloadID,
+		Payload:            complete.Payload,
+		CompletedAt:        time.Now(),
+	})
+	apResponses, err := buildDLAPContainerIEs(ulCooperation.MessageIdentity, complete)
+	if err != nil {
+		logAPContainerDrop(ue, anType, ulCooperation.MessageIdentity, complete, err)
+		return groupOrdinaryDLCooperationIEs(ordinaryDLIEs), nil
+	}
+	return groupDLCooperationResponses(ordinaryDLIEs, apResponses), nil
+}
+
+func groupOrdinaryDLCooperationIEs(
+	ordinary []*nasMessage.CooperationIE,
+) [][]*nasMessage.CooperationIE {
+	if len(ordinary) == 0 {
+		return nil
+	}
+	return [][]*nasMessage.CooperationIE{ordinary}
+}
+
+func groupDLCooperationResponses(
+	ordinary []*nasMessage.CooperationIE,
+	ap []*nasMessage.CooperationIE,
+) [][]*nasMessage.CooperationIE {
+	if len(ap) == 0 {
+		return groupOrdinaryDLCooperationIEs(ordinary)
+	}
+	groups := make([][]*nasMessage.CooperationIE, 0, len(ap))
+	first := append([]*nasMessage.CooperationIE(nil), ordinary...)
+	first = append(first, ap[0])
+	groups = append(groups, first)
+	for _, ie := range ap[1:] {
+		groups = append(groups, []*nasMessage.CooperationIE{ie})
+	}
+	return groups
 }
 
 func handleULCooperationIE10(ue *context.AmfUe, _ models.AccessType,
@@ -193,29 +268,27 @@ func handleULCooperationIE18(ue *context.AmfUe, _ models.AccessType,
 	return nil, nil
 }
 
-func handleULCooperationIE71(ue *context.AmfUe, _ models.AccessType,
-	ie *nasMessage.CooperationIE,
-) ([]*nasMessage.CooperationIE, error) {
-	contents := ie.GetContents()
-	storeNegotiatedCooperationIE(ue, ie.GetIei(), contents)
-	var response *nasMessage.CooperationIE
-	if ie.LegacyLen > 0 {
-		response = nasMessage.NewCooperationIELegacy(ie.GetIei(), contents)
-	} else {
-		var err error
-		response, err = nasMessage.NewCooperationIE(ie.GetIei(), contents)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return []*nasMessage.CooperationIE{response}, nil
+func storeNegotiatedCooperationIE(ue *context.AmfUe, iei uint8, contents []byte) {
+	cooperationContext := ue.GetOrCreateCooperationContext()
+	cooperationContext.NegotiatedIEs[iei] = cloneBytes(contents)
 }
 
-func storeNegotiatedCooperationIE(ue *context.AmfUe, iei uint8, contents []byte) {
-	if ue.CooperationContext.NegotiatedIEs == nil {
-		ue.CooperationContext.NegotiatedIEs = make(map[uint8][]byte)
+func logAPContainerDrop(
+	ue *context.AmfUe,
+	accessType models.AccessType,
+	messageIdentity uint8,
+	fragment *nasMessage.APContainer,
+	err error,
+) {
+	if ue.GmmLog == nil {
+		return
 	}
-	ue.CooperationContext.NegotiatedIEs[iei] = cloneBytes(contents)
+	ue.GmmLog.Warnf(
+		"Dropping AP Container access=%s messageIdentity=0x%02x type=0x%04x pti=0x%02x payloadId=0x%04x DF=%v MF=%v offset=%d payloadLength=%d: %v",
+		accessType, messageIdentity, fragment.ContainerType, fragment.ContainerTypePTI,
+		fragment.ContainerPayloadID, fragment.DontFragment(), fragment.MoreFragments(),
+		fragment.FragmentOffset, len(fragment.Payload), err,
+	)
 }
 
 func cloneBytes(in []byte) []byte {
@@ -232,7 +305,26 @@ func logCooperationIE(ue *context.AmfUe, name string, ie *nasMessage.Cooperation
 	contents := ie.GetContents()
 	ue.GmmLog.Infof("  %s:", name)
 	ue.GmmLog.Infof("    IEI: 0x%02x", ie.GetIei())
-	ue.GmmLog.Infof("    Length: %d", ie.GetLen())
+	ue.GmmLog.Infof("    Length: %d", len(contents))
+
+	if ie.GetIei() == nasMessage.CooperationIEType71 {
+		fragment, err := nasMessage.DecodeAPContainer(contents)
+		if err != nil {
+			ue.GmmLog.Infof("    AP Container: invalid (%v), raw length=%d", err, len(contents))
+			return
+		}
+		prefixLength := len(fragment.Payload)
+		if prefixLength > 32 {
+			prefixLength = 32
+		}
+		ue.GmmLog.Infof(
+			"    AP Container: type=0x%04x pti=0x%02x payloadId=0x%04x DF=%v MF=%v offset=%d payloadLength=%d prefix=%x",
+			fragment.ContainerType, fragment.ContainerTypePTI, fragment.ContainerPayloadID,
+			fragment.DontFragment(), fragment.MoreFragments(), fragment.FragmentOffset,
+			len(fragment.Payload), fragment.Payload[:prefixLength],
+		)
+		return
+	}
 
 	if len(contents) > 0 && contents[0] == 0x7b {
 		ue.GmmLog.Infof("    Contents (JSON): %s", string(contents))

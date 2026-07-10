@@ -2,7 +2,10 @@ package gmm
 
 import (
 	"bytes"
+	"strings"
 	"testing"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/acore2026/amf/internal/context"
 	"github.com/acore2026/nas"
@@ -10,44 +13,134 @@ import (
 	"github.com/acore2026/openapi/models"
 )
 
-func TestProcessULCooperationStoresRawAndNegotiatedIEs(t *testing.T) {
+func TestProcessULCooperationStoresCompletedAPContainer(t *testing.T) {
 	ue := &context.AmfUe{}
+	t.Cleanup(ue.StopAPContainerReassemblyTimers)
 	ul := nasMessage.NewULCooperation(nas.MsgTypeULCooperation)
 	ul.MessageIdentity = 0x01
 	mustAddIE(t, ul, 0x10, []byte{0x01})
 	mustAddIE(t, ul, 0x18, []byte{0x01})
-	mustAddIE(t, ul, 0x71, []byte{0xaa, 0xbb})
+	apContents := mustAddAPContainerIE(t, ul, &nasMessage.APContainer{
+		ContainerType:      0x0100,
+		ContainerTypePTI:   0x05,
+		ContainerPayloadID: 0x1234,
+		Payload:            []byte{0xaa, 0xbb},
+	})
 
-	dlIEs, err := processULCooperationIEs(ue, models.AccessType__3_GPP_ACCESS, ul)
+	dlMessages, err := processULCooperationIEs(ue, models.AccessType__3_GPP_ACCESS, ul)
 	if err != nil {
 		t.Fatalf("processULCooperationIEs() error = %v", err)
 	}
+	if len(dlMessages) != 1 || len(dlMessages[0]) != 2 {
+		t.Fatalf("DL messages = %#v, want one message with two IEs", dlMessages)
+	}
+	assertDLIE(t, dlMessages[0][0], 0x10, []byte{0x01})
+	assertAPContainerIE(t, dlMessages[0][1], 0, false, []byte{0xaa, 0xbb})
 
-	if ue.CooperationContext == nil {
+	ctx := ue.CooperationContext
+	if ctx == nil {
 		t.Fatal("CooperationContext is nil")
 	}
-	if ue.CooperationContext.LastMessageIdentity != 0x01 {
-		t.Fatalf("LastMessageIdentity = 0x%02x, want 0x01", ue.CooperationContext.LastMessageIdentity)
-	}
-	assertStoredIE(t, ue.CooperationContext.LastULIEs, 0x10, [][]byte{{0x01}})
-	assertStoredIE(t, ue.CooperationContext.LastULIEs, 0x18, [][]byte{{0x01}})
-	assertStoredIE(t, ue.CooperationContext.LastULIEs, 0x71, [][]byte{{0xaa, 0xbb}})
-
-	if got := ue.CooperationContext.NegotiatedIEs[0x10]; !bytes.Equal(got, []byte{0x01}) {
+	assertStoredIE(t, ctx.LastULIEs, 0x10, [][]byte{{0x01}})
+	assertStoredIE(t, ctx.LastULIEs, 0x18, [][]byte{{0x01}})
+	assertStoredIE(t, ctx.LastULIEs, 0x71, [][]byte{apContents})
+	if got := ctx.NegotiatedIEs[0x10]; !bytes.Equal(got, []byte{0x01}) {
 		t.Fatalf("NegotiatedIEs[0x10] = %x, want 01", got)
 	}
-	if got := ue.CooperationContext.NegotiatedIEs[0x18]; !bytes.Equal(got, []byte{0x01}) {
+	if got := ctx.NegotiatedIEs[0x18]; !bytes.Equal(got, []byte{0x01}) {
 		t.Fatalf("NegotiatedIEs[0x18] = %x, want 01", got)
 	}
-	if got := ue.CooperationContext.NegotiatedIEs[0x71]; !bytes.Equal(got, []byte{0xaa, 0xbb}) {
-		t.Fatalf("NegotiatedIEs[0x71] = %x, want aabb", got)
+	if _, ok := ctx.NegotiatedIEs[0x71]; ok {
+		t.Fatal("NegotiatedIEs contains partial AP Container state")
+	}
+	completed := ctx.CompletedAPContainers()
+	record, ok := completed[0x1234]
+	if !ok || !bytes.Equal(record.Payload, []byte{0xaa, 0xbb}) {
+		t.Fatalf("completed AP Container = %#v", record)
+	}
+}
+
+func TestProcessULCooperationKeepsOrdinaryIEIndependentOfIncompleteAP(t *testing.T) {
+	ue := &context.AmfUe{}
+	t.Cleanup(ue.StopAPContainerReassemblyTimers)
+	first := nasMessage.NewULCooperation(nas.MsgTypeULCooperation)
+	first.MessageIdentity = 0x01
+	mustAddIE(t, first, 0x10, []byte{0x01})
+	mustAddAPContainerIE(t, first, apFragment(1, 0, true, []byte("abc")))
+
+	dlMessages, err := processULCooperationIEs(ue, models.AccessType__3_GPP_ACCESS, first)
+	if err != nil {
+		t.Fatalf("first process error = %v", err)
+	}
+	if len(dlMessages) != 1 || len(dlMessages[0]) != 1 {
+		t.Fatalf("first DL messages = %#v", dlMessages)
+	}
+	assertDLIE(t, dlMessages[0][0], 0x10, []byte{0x01})
+	if len(ue.CooperationContext.CompletedAPContainers()) != 0 {
+		t.Fatal("incomplete AP Container was stored as completed")
 	}
 
-	if len(dlIEs) != 2 {
-		t.Fatalf("DL IE count = %d, want 2", len(dlIEs))
+	second := nasMessage.NewULCooperation(nas.MsgTypeULCooperation)
+	second.MessageIdentity = 0x01
+	mustAddAPContainerIE(t, second, apFragment(1, 3, false, []byte("def")))
+	dlMessages, err = processULCooperationIEs(ue, models.AccessType__3_GPP_ACCESS, second)
+	if err != nil {
+		t.Fatalf("second process error = %v", err)
 	}
-	assertDLIE(t, dlIEs[0], 0x10, []byte{0x01})
-	assertDLIE(t, dlIEs[1], 0x71, []byte{0xaa, 0xbb})
+	if len(dlMessages) != 1 || len(dlMessages[0]) != 1 {
+		t.Fatalf("second DL messages = %#v", dlMessages)
+	}
+	assertAPContainerIE(t, dlMessages[0][0], 0, false, []byte("abcdef"))
+}
+
+func TestProcessULCooperationGroupsOrdinaryIEOnlyWithFirstAPFragment(t *testing.T) {
+	ue := &context.AmfUe{}
+	t.Cleanup(ue.StopAPContainerReassemblyTimers)
+	ul := nasMessage.NewULCooperation(nas.MsgTypeULCooperation)
+	ul.MessageIdentity = 0x02
+	mustAddIE(t, ul, 0x10, []byte{0x01})
+	payload := bytes.Repeat([]byte{0xaa}, 500)
+	contents := mustEncodeAPContainer(t, &nasMessage.APContainer{
+		ContainerType:      0x0100,
+		ContainerTypePTI:   0x05,
+		ContainerPayloadID: 0x1234,
+		Payload:            payload,
+	})
+	ul.IEs = append(ul.IEs, nasMessage.NewCooperationIELegacy(0x71, contents))
+
+	dlMessages, err := processULCooperationIEs(ue, models.AccessType__3_GPP_ACCESS, ul)
+	if err != nil {
+		t.Fatalf("processULCooperationIEs() error = %v", err)
+	}
+	if len(dlMessages) != 3 {
+		t.Fatalf("DL message count = %d, want 3", len(dlMessages))
+	}
+	if len(dlMessages[0]) != 2 || len(dlMessages[1]) != 1 || len(dlMessages[2]) != 1 {
+		t.Fatalf("DL grouping = %#v", dlMessages)
+	}
+	assertDLIE(t, dlMessages[0][0], 0x10, []byte{0x01})
+	assertAPContainerIE(t, dlMessages[0][1], 0, true, payload[:245])
+	assertAPContainerIE(t, dlMessages[1][0], 245, true, payload[245:490])
+	assertAPContainerIE(t, dlMessages[2][0], 490, false, payload[490:])
+}
+
+func TestProcessULCooperationRejectsMultipleAPContainersWithoutBlockingIE10(t *testing.T) {
+	ue := &context.AmfUe{}
+	t.Cleanup(ue.StopAPContainerReassemblyTimers)
+	ul := nasMessage.NewULCooperation(nas.MsgTypeULCooperation)
+	ul.MessageIdentity = 0x01
+	mustAddIE(t, ul, 0x10, []byte{0x01})
+	mustAddAPContainerIE(t, ul, &nasMessage.APContainer{ContainerPayloadID: 1})
+	mustAddAPContainerIE(t, ul, &nasMessage.APContainer{ContainerPayloadID: 2})
+
+	dlMessages, err := processULCooperationIEs(ue, models.AccessType__3_GPP_ACCESS, ul)
+	if err != nil {
+		t.Fatalf("processULCooperationIEs() error = %v", err)
+	}
+	if len(dlMessages) != 1 || len(dlMessages[0]) != 1 {
+		t.Fatalf("DL messages = %#v", dlMessages)
+	}
+	assertDLIE(t, dlMessages[0][0], 0x10, []byte{0x01})
 }
 
 func TestProcessULCooperationDoesNotEmitDL18(t *testing.T) {
@@ -56,12 +149,38 @@ func TestProcessULCooperationDoesNotEmitDL18(t *testing.T) {
 	ul.MessageIdentity = 0x01
 	mustAddIE(t, ul, 0x18, []byte{0x01})
 
-	dlIEs, err := processULCooperationIEs(ue, models.AccessType__3_GPP_ACCESS, ul)
+	dlMessages, err := processULCooperationIEs(ue, models.AccessType__3_GPP_ACCESS, ul)
 	if err != nil {
 		t.Fatalf("processULCooperationIEs() error = %v", err)
 	}
-	if len(dlIEs) != 0 {
-		t.Fatalf("DL IE count = %d, want 0", len(dlIEs))
+	if len(dlMessages) != 0 {
+		t.Fatalf("DL message count = %d, want 0", len(dlMessages))
+	}
+}
+
+func TestLogCooperationIEBoundsAPContainerPayload(t *testing.T) {
+	var output bytes.Buffer
+	log := logrus.New()
+	log.SetOutput(&output)
+	ue := &context.AmfUe{GmmLog: logrus.NewEntry(log)}
+	payload := bytes.Repeat([]byte{0xaa}, 64)
+	contents := mustEncodeAPContainer(t, &nasMessage.APContainer{
+		ContainerPayloadID: 1,
+		Payload:            payload,
+	})
+	ie, err := nasMessage.NewCooperationIE(nasMessage.CooperationIEType71, contents)
+	if err != nil {
+		t.Fatalf("NewCooperationIE() error = %v", err)
+	}
+
+	logCooperationIE(ue, "IE[0]", ie)
+
+	got := output.String()
+	if strings.Contains(got, strings.Repeat("aa", len(payload))) {
+		t.Fatal("log contains the complete AP Container payload")
+	}
+	if !strings.Contains(got, "payloadLength=64") {
+		t.Fatalf("log does not contain AP metadata: %s", got)
 	}
 }
 
@@ -70,6 +189,28 @@ func mustAddIE(t *testing.T, ul *nasMessage.ULCooperation, iei uint8, contents [
 	if err := ul.AddIE(iei, contents); err != nil {
 		t.Fatalf("AddIE(0x%02x) error = %v", iei, err)
 	}
+}
+
+func mustAddAPContainerIE(
+	t *testing.T,
+	ul *nasMessage.ULCooperation,
+	container *nasMessage.APContainer,
+) []byte {
+	t.Helper()
+	contents := mustEncodeAPContainer(t, container)
+	if err := ul.AddIE(nasMessage.CooperationIEType71, contents); err != nil {
+		t.Fatalf("AddIE(0x71) error = %v", err)
+	}
+	return contents
+}
+
+func mustEncodeAPContainer(t *testing.T, container *nasMessage.APContainer) []byte {
+	t.Helper()
+	contents, err := container.Encode()
+	if err != nil {
+		t.Fatalf("APContainer.Encode() error = %v", err)
+	}
+	return contents
 }
 
 func assertStoredIE(t *testing.T, got map[uint8][][]byte, iei uint8, want [][]byte) {
@@ -95,5 +236,27 @@ func assertDLIE(t *testing.T, ie *nasMessage.CooperationIE, wantIEI uint8, wantC
 	}
 	if got := ie.GetContents(); !bytes.Equal(got, wantContents) {
 		t.Fatalf("DL IE 0x%02x contents = %x, want %x", wantIEI, got, wantContents)
+	}
+}
+
+func assertAPContainerIE(
+	t *testing.T,
+	ie *nasMessage.CooperationIE,
+	wantOffset uint16,
+	wantMF bool,
+	wantPayload []byte,
+) {
+	t.Helper()
+	if ie == nil || ie.GetIei() != nasMessage.CooperationIEType71 {
+		t.Fatalf("AP Container IE = %#v", ie)
+	}
+	container, err := nasMessage.DecodeAPContainer(ie.GetContents())
+	if err != nil {
+		t.Fatalf("DecodeAPContainer() error = %v", err)
+	}
+	if container.FragmentOffset != wantOffset || container.MoreFragments() != wantMF ||
+		!bytes.Equal(container.Payload, wantPayload) {
+		t.Fatalf("AP Container = %#v, want offset=%d MF=%v payload=%x",
+			container, wantOffset, wantMF, wantPayload)
 	}
 }

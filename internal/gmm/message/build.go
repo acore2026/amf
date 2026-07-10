@@ -726,12 +726,19 @@ func BuildDLCooperation(ue *context.AmfUe, accessType models.AccessType,
 	dlCooperation.SpareHalfOctetAndSecurityHeaderType.SetSpareHalfOctet(0)
 	dlCooperation.MessageIdentity = messageIdentity
 
+	apContainerCount := 0
 	for _, ie := range ies {
 		if ie == nil {
 			continue
 		}
 		if !isAllowedDLCooperationIE(ie.GetIei()) {
 			return nil, fmt.Errorf("DLCooperation IEI 0x%02x is not allowed", ie.GetIei())
+		}
+		if ie.GetIei() == nasMessage.CooperationIEType71 {
+			apContainerCount++
+			if apContainerCount > 1 {
+				return nil, fmt.Errorf("DLCooperation contains more than one AP Container IE")
+			}
 		}
 		dlCooperation.IEs = append(dlCooperation.IEs, ie)
 		dlCooperation.IndexIE(ie)
