@@ -79,8 +79,15 @@ func (a *ULCooperation) EncodeULCooperation(buffer *bytes.Buffer) error {
 		}
 		ies = append(ies, a.UnknownIEs...)
 	}
+	legacy := a.MessageIdentity != 0x01
 	for _, ie := range ies {
-		if err := encodeCooperationIE(buffer, "ULCooperation", ie); err != nil {
+		var err error
+		if legacy {
+			err = encodeCooperationIELegacy(buffer, "ULCooperation", ie)
+		} else {
+			err = encodeCooperationIE(buffer, "ULCooperation", ie)
+		}
+		if err != nil {
 			return err
 		}
 	}

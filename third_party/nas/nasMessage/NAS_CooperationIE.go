@@ -70,65 +70,6 @@ func (a *CooperationIE) SetContents(contents []uint8) {
 	copy(a.Contents, contents)
 }
 
-func (a *CooperationIE) GetContainerType() uint16 {
-	if len(a.Contents) < 2 {
-		return 0
-	}
-	return binary.BigEndian.Uint16(a.Contents[0:2])
-}
-
-func (a *CooperationIE) SetContainerType(containerType uint16) {
-	a.ensureContentsLen(2)
-	binary.BigEndian.PutUint16(a.Contents[0:2], containerType)
-}
-
-func (a *CooperationIE) GetContainerContentLength() uint16 {
-	if len(a.Contents) < 4 {
-		return 0
-	}
-	return binary.BigEndian.Uint16(a.Contents[2:4])
-}
-
-func (a *CooperationIE) SetContainerContentLength(length uint16) {
-	a.ensureContentsLen(4)
-	binary.BigEndian.PutUint16(a.Contents[2:4], length)
-}
-
-func (a *CooperationIE) GetContainerTypePTI() uint8 {
-	if len(a.Contents) < 5 {
-		return 0
-	}
-	return a.Contents[4]
-}
-
-func (a *CooperationIE) SetContainerTypePTI(pti uint8) {
-	a.ensureContentsLen(5)
-	a.Contents[4] = pti
-	a.Len = uint8(len(a.Contents))
-}
-
-func (a *CooperationIE) GetContainerContent() uint32 {
-	if len(a.Contents) < 9 {
-		return 0
-	}
-	return binary.BigEndian.Uint32(a.Contents[5:9])
-}
-
-func (a *CooperationIE) SetContainerContent(content uint32) {
-	a.ensureContentsLen(9)
-	binary.BigEndian.PutUint32(a.Contents[5:9], content)
-}
-
-func (a *CooperationIE) ensureContentsLen(length int) {
-	if len(a.Contents) >= length {
-		return
-	}
-	contents := make([]uint8, length)
-	copy(contents, a.Contents)
-	a.Contents = contents
-	a.Len = uint8(len(contents))
-}
-
 func encodeCooperationIE(buffer *bytes.Buffer, messageName string, ie *CooperationIE) error {
 	if ie == nil {
 		return nil
