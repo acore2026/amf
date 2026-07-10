@@ -1,6 +1,7 @@
 package ngap
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -138,53 +139,116 @@ func TestInitialRegistrationProcedure(t *testing.T) {
 	require.True(t, amfUe.State[models.AccessType__3_GPP_ACCESS].Is(amf_context.Registered))
 	require.Nil(t, amfUe.T3550)
 
-	ulCooperation := []byte{
-		nasMessage.Epd5GSMobilityManagementMessage, 0x00, nas.MsgTypeULCooperation, 0x01,
-		0x10, 0x01, 0x01,
-		0x18, 0x01, 0x01,
-		0x71, 0x02, 0xaa, 0xbb,
+	payload := make([]byte, 300)
+	for i := range payload {
+		payload[i] = byte(i)
 	}
-	protectedULCooperation := encodeUplinkNas(
+	lastFragmentContents := mustEncodeAPContainer(t, &nasMessage.APContainer{
+		ContainerType:      0x0100,
+		ContainerTypePTI:   0x05,
+		ContainerPayloadID: 0x1234,
+		FragmentOffset:     245,
+		Payload:            payload[245:],
+	})
+	lastFragmentUL := []byte{
+		nasMessage.Epd5GSMobilityManagementMessage, 0x00, nas.MsgTypeULCooperation, 0x01,
+		0x71, byte(len(lastFragmentContents)),
+	}
+	lastFragmentUL = append(lastFragmentUL, lastFragmentContents...)
+	protectedLastFragment := encodeUplinkNas(
 		t,
 		amfUe,
 		models.AccessType__3_GPP_ACCESS,
-		ulCooperation,
+		lastFragmentUL,
 		nas.SecurityHeaderTypeIntegrityProtectedAndCiphered,
 	)
 	beforeCooperationResponses := len(connStub.MsgList)
 	handleUplinkNASTransportMain(
 		ran,
 		ranUe,
-		&ngapType.NASPDU{Value: protectedULCooperation},
+		&ngapType.NASPDU{Value: protectedLastFragment},
+		nil,
+	)
+	require.Len(t, connStub.MsgList, beforeCooperationResponses)
+
+	firstFragmentContents := mustEncodeAPContainer(t, &nasMessage.APContainer{
+		ContainerType:      0x0100,
+		ContainerTypePTI:   0x05,
+		ContainerPayloadID: 0x1234,
+		ContainerFlags:     nasMessage.APContainerFlagMF,
+		FragmentOffset:     0,
+		Payload:            payload[:245],
+	})
+	firstFragmentUL := []byte{
+		nasMessage.Epd5GSMobilityManagementMessage, 0x00, nas.MsgTypeULCooperation, 0x01,
+		0x10, 0x01, 0x01,
+		0x18, 0x01, 0x01,
+		0x71, byte(len(firstFragmentContents)),
+	}
+	firstFragmentUL = append(firstFragmentUL, firstFragmentContents...)
+	protectedFirstFragment := encodeUplinkNas(
+		t,
+		amfUe,
+		models.AccessType__3_GPP_ACCESS,
+		firstFragmentUL,
+		nas.SecurityHeaderTypeIntegrityProtectedAndCiphered,
+	)
+	cooperationDLCount := amfUe.DLCount.Get()
+	handleUplinkNASTransportMain(
+		ran,
+		ranUe,
+		&ngapType.NASPDU{Value: protectedFirstFragment},
 		nil,
 	)
 
-	require.Greater(t, len(connStub.MsgList), beforeCooperationResponses)
-	cooperationRaw := lastConnMessage(t, connStub)
-	cooperationPdu, cooperationNas := decodeNgapNas(
+	require.Len(t, connStub.MsgList, beforeCooperationResponses+2)
+	firstPdu, firstNas := decodeNgapNas(
 		t,
-		cooperationRaw,
+		connStub.MsgList[beforeCooperationResponses],
 		amfUe,
 		models.AccessType__3_GPP_ACCESS,
+		cooperationDLCount,
 	)
-	require.Equal(t, int64(ngapType.ProcedureCodeDownlinkNASTransport), cooperationPdu.InitiatingMessage.ProcedureCode.Value)
-	require.NotNil(t, cooperationNas.GmmMessage)
-	require.NotNil(t, cooperationNas.GmmMessage.DLCooperation)
+	secondPdu, secondNas := decodeNgapNas(
+		t,
+		connStub.MsgList[beforeCooperationResponses+1],
+		amfUe,
+		models.AccessType__3_GPP_ACCESS,
+		cooperationDLCount+1,
+	)
+	require.Equal(t, int64(ngapType.ProcedureCodeDownlinkNASTransport), firstPdu.InitiatingMessage.ProcedureCode.Value)
+	require.Equal(t, int64(ngapType.ProcedureCodeDownlinkNASTransport), secondPdu.InitiatingMessage.ProcedureCode.Value)
+	require.NotNil(t, firstNas.GmmMessage.DLCooperation)
+	require.NotNil(t, secondNas.GmmMessage.DLCooperation)
 
-	dlCooperation := cooperationNas.GmmMessage.DLCooperation
-	require.Equal(t, uint8(0x01), dlCooperation.MessageIdentity)
-	require.Equal(t, []uint8{0x01}, dlCooperation.GetIE(0x10).GetContents())
-	require.Equal(t, []uint8{0xaa, 0xbb}, dlCooperation.GetIE(0x71).GetContents())
-	require.Nil(t, dlCooperation.GetIE(0x18))
+	firstDL := firstNas.GmmMessage.DLCooperation
+	secondDL := secondNas.GmmMessage.DLCooperation
+	require.Equal(t, uint8(0x01), firstDL.MessageIdentity)
+	require.Equal(t, []uint8{0x01}, firstDL.GetIE(0x10).GetContents())
+	require.Nil(t, firstDL.GetIE(0x18))
+	require.Nil(t, secondDL.GetIE(0x10))
+	firstAP, err := nasMessage.DecodeAPContainer(firstDL.GetIE(0x71).GetContents())
+	require.NoError(t, err)
+	secondAP, err := nasMessage.DecodeAPContainer(secondDL.GetIE(0x71).GetContents())
+	require.NoError(t, err)
+	require.Equal(t, uint16(0), firstAP.FragmentOffset)
+	require.True(t, firstAP.MoreFragments())
+	require.Len(t, firstAP.Payload, 245)
+	require.Equal(t, uint16(245), secondAP.FragmentOffset)
+	require.False(t, secondAP.MoreFragments())
+	require.Len(t, secondAP.Payload, 55)
+	require.True(t, bytes.Equal(payload, append(append([]byte(nil), firstAP.Payload...), secondAP.Payload...)))
 
 	require.NotNil(t, amfUe.CooperationContext)
 	require.Equal(t, uint8(0x01), amfUe.CooperationContext.LastMessageIdentity)
 	require.Equal(t, [][]byte{{0x01}}, amfUe.CooperationContext.LastULIEs[0x10])
 	require.Equal(t, [][]byte{{0x01}}, amfUe.CooperationContext.LastULIEs[0x18])
-	require.Equal(t, [][]byte{{0xaa, 0xbb}}, amfUe.CooperationContext.LastULIEs[0x71])
+	require.Equal(t, [][]byte{firstFragmentContents}, amfUe.CooperationContext.LastULIEs[0x71])
 	require.Equal(t, []byte{0x01}, amfUe.CooperationContext.NegotiatedIEs[0x10])
 	require.Equal(t, []byte{0x01}, amfUe.CooperationContext.NegotiatedIEs[0x18])
-	require.Equal(t, []byte{0xaa, 0xbb}, amfUe.CooperationContext.NegotiatedIEs[0x71])
+	require.NotContains(t, amfUe.CooperationContext.NegotiatedIEs, uint8(0x71))
+	completed := amfUe.CooperationContext.CompletedAPContainers()
+	require.Equal(t, payload, completed[0x1234].Payload)
 }
 
 type registrationMockServers struct {
@@ -409,6 +473,13 @@ func calculateHxresStar(t *testing.T, randHex string, resStar []byte) string {
 	return hex.EncodeToString(h[16:])
 }
 
+func mustEncodeAPContainer(t *testing.T, container *nasMessage.APContainer) []byte {
+	t.Helper()
+	contents, err := container.Encode()
+	require.NoError(t, err)
+	return contents
+}
+
 func lastConnMessage(t *testing.T, conn *ngaptesting.SctpConnStub) []byte {
 	t.Helper()
 	require.NotEmpty(t, conn.MsgList)
@@ -420,6 +491,7 @@ func decodeNgapNas(
 	raw []byte,
 	ue *amf_context.AmfUe,
 	accessType models.AccessType,
+	expectedCount ...uint32,
 ) (*ngapType.NGAPPDU, *nas.Message) {
 	t.Helper()
 
@@ -433,7 +505,7 @@ func decodeNgapNas(
 		require.NotNil(t, dl)
 		for _, ie := range dl.ProtocolIEs.List {
 			if ie.Id.Value == ngapType.ProtocolIEIDNASPDU {
-				return pdu, decodeDownlinkNas(t, ie.Value.NASPDU.Value, ue, accessType)
+				return pdu, decodeDownlinkNas(t, ie.Value.NASPDU.Value, ue, accessType, expectedCount...)
 			}
 		}
 	case ngapType.ProcedureCodeInitialContextSetup:
@@ -441,7 +513,7 @@ func decodeNgapNas(
 		require.NotNil(t, ics)
 		for _, ie := range ics.ProtocolIEs.List {
 			if ie.Id.Value == ngapType.ProtocolIEIDNASPDU {
-				return pdu, decodeDownlinkNas(t, ie.Value.NASPDU.Value, ue, accessType)
+				return pdu, decodeDownlinkNas(t, ie.Value.NASPDU.Value, ue, accessType, expectedCount...)
 			}
 		}
 	}
@@ -455,6 +527,7 @@ func decodeDownlinkNas(
 	payload []byte,
 	ue *amf_context.AmfUe,
 	accessType models.AccessType,
+	expectedCount ...uint32,
 ) *nas.Message {
 	t.Helper()
 
@@ -472,6 +545,10 @@ func decodeDownlinkNas(
 	seqPayload := append([]byte(nil), payload[6:]...)
 	sequenceNumber := seqPayload[0]
 	count := ue.DLCount.Get() - 1
+	if len(expectedCount) > 0 {
+		require.Len(t, expectedCount, 1)
+		count = expectedCount[0]
+	}
 	if securityHeaderType == nas.SecurityHeaderTypeIntegrityProtectedAndCipheredWithNew5gNasSecurityContext {
 		count = 0
 	}

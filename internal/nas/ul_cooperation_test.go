@@ -9,15 +9,26 @@ import (
 )
 
 func TestPlainNasDecodeULCooperationTLVs(t *testing.T) {
+	apContents, err := (&nasMessage.APContainer{
+		ContainerType:      0x0100,
+		ContainerTypePTI:   0x05,
+		ContainerPayloadID: 0x1234,
+		ContainerFlags:     nasMessage.APContainerFlagDF,
+		Payload:            []byte{0xaa, 0xbb},
+	}).Encode()
+	if err != nil {
+		t.Fatalf("APContainer.Encode() error = %v", err)
+	}
 	pdu := []byte{
 		nasMessage.Epd5GSMobilityManagementMessage, 0x00, acoreNas.MsgTypeULCooperation, 0x01,
 		0x10, 0x01, 0x01,
 		0x18, 0x01, 0x01,
-		0x71, 0x02, 0xaa, 0xbb,
+		0x71, byte(len(apContents)),
 	}
+	pdu = append(pdu, apContents...)
 
 	msg := acoreNas.NewMessage()
-	if err := msg.PlainNasDecode(&pdu); err != nil {
+	if err = msg.PlainNasDecode(&pdu); err != nil {
 		t.Fatalf("PlainNasDecode() error = %v", err)
 	}
 	if msg.GmmMessage == nil || msg.GmmMessage.ULCooperation == nil {
@@ -37,7 +48,57 @@ func TestPlainNasDecodeULCooperationTLVs(t *testing.T) {
 
 	assertIE(t, ul.GetIE(0x10), 0x10, []byte{0x01})
 	assertIE(t, ul.GetIE(0x18), 0x18, []byte{0x01})
-	assertIE(t, ul.GetIE(0x71), 0x71, []byte{0xaa, 0xbb})
+	assertIE(t, ul.GetIE(0x71), 0x71, apContents)
+	ap, err := nasMessage.DecodeAPContainer(ul.GetIE(0x71).GetContents())
+	if err != nil {
+		t.Fatalf("DecodeAPContainer() error = %v", err)
+	}
+	if !bytes.Equal(ap.Payload, []byte{0xaa, 0xbb}) {
+		t.Fatalf("AP payload = %x, want aabb", ap.Payload)
+	}
+}
+
+func TestULCooperationOneByteLengthSupports245ByteAPFragment(t *testing.T) {
+	payload := bytes.Repeat([]byte{0x5a}, nasMessage.APContainerMaxDLFragmentSize)
+	apContents, err := (&nasMessage.APContainer{
+		ContainerType:      0x0100,
+		ContainerTypePTI:   0x05,
+		ContainerPayloadID: 0x1234,
+		ContainerFlags:     nasMessage.APContainerFlagMF,
+		Payload:            payload,
+	}).Encode()
+	if err != nil {
+		t.Fatalf("APContainer.Encode() error = %v", err)
+	}
+	if len(apContents) != 255 {
+		t.Fatalf("AP Container length = %d, want 255", len(apContents))
+	}
+
+	ul := nasMessage.NewULCooperation(acoreNas.MsgTypeULCooperation)
+	ul.SetExtendedProtocolDiscriminator(nasMessage.Epd5GSMobilityManagementMessage)
+	if err = ul.AddIE(0x71, apContents); err != nil {
+		t.Fatalf("AddIE(0x71) error = %v", err)
+	}
+	buffer := bytes.NewBuffer(nil)
+	if err = ul.EncodeULCooperation(buffer); err != nil {
+		t.Fatalf("EncodeULCooperation() error = %v", err)
+	}
+	encoded := buffer.Bytes()
+	if encoded[5] != 0xff {
+		t.Fatalf("AP IE length = %d, want 255", encoded[5])
+	}
+
+	msg := acoreNas.NewMessage()
+	if err = msg.PlainNasDecode(&encoded); err != nil {
+		t.Fatalf("PlainNasDecode() error = %v", err)
+	}
+	decoded, err := nasMessage.DecodeAPContainer(msg.GmmMessage.ULCooperation.GetIE(0x71).GetContents())
+	if err != nil {
+		t.Fatalf("DecodeAPContainer() error = %v", err)
+	}
+	if !bytes.Equal(decoded.Payload, payload) {
+		t.Fatal("decoded AP payload does not match 245-byte fragment")
+	}
 }
 
 func TestDecodeULCooperationRejectsMalformedTLV(t *testing.T) {
