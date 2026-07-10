@@ -32,3 +32,6 @@ cscope.*
 .cache/
 .claude/settings.local.json
 SESSION_NOTES.md
+
+# Local Git worktrees
+.worktrees/
