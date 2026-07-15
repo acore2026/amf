@@ -218,6 +218,39 @@ func TestScheduler_PerUESequentiality(t *testing.T) {
 	}
 }
 
+func TestSchedulerSerializesUECallbackWithMessages(t *testing.T) {
+	var mu sync.Mutex
+	order := make([]string, 0, 3)
+	done := make(chan struct{})
+	scheduler := NewUEScheduler(2, 10, func(_ net.Conn, msg []byte) {
+		mu.Lock()
+		order = append(order, string(msg))
+		if len(order) == 3 {
+			close(done)
+		}
+		mu.Unlock()
+	})
+	defer scheduler.Shutdown()
+
+	ueID := uint64(42)
+	scheduler.DispatchTask(Task{UEID: ueID, Message: []byte("first")})
+	scheduler.DispatchTask(Task{UEID: ueID, Callback: func() {
+		mu.Lock()
+		order = append(order, "callback")
+		mu.Unlock()
+	}})
+	scheduler.DispatchTask(Task{UEID: ueID, Message: []byte("second")})
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("scheduler did not process all tasks")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, []string{"first", "callback", "second"}, order)
+}
+
 func TestScheduler_MultipleUEsConcurrent(t *testing.T) {
 	// Test multiple UEs being processed concurrently
 	numWorkers := 8

@@ -12,9 +12,10 @@ import (
 // Task represents a work item to be processed by a worker.
 // It contains the UE identifier and the raw NGAP message.
 type Task struct {
-	UEID    uint64   // AMF-UE-NGAP-ID or RAN-UE-NGAP-ID
-	Conn    net.Conn // The network connection for this message
-	Message []byte   // The raw NGAP message bytes
+	UEID     uint64   // AMF-UE-NGAP-ID or RAN-UE-NGAP-ID
+	Conn     net.Conn // The network connection for this message
+	Message  []byte   // The raw NGAP message bytes
+	Callback func()   // Optional asynchronous work serialized with this UE's messages.
 }
 
 // Worker represents a goroutine that processes tasks from its dedicated queue.
@@ -56,7 +57,7 @@ func (w *Worker) run() {
 		case task := <-w.taskChan:
 			logger.NgapLog.Debugf("Worker %d processing task for UE ID %d (ensuring per-UE sequentiality)",
 				w.ID, task.UEID)
-			w.handler(task.Conn, task.Message)
+			w.execute(task)
 
 		case <-w.stopChan:
 			logger.NgapLog.Infof("Worker %d: shutdown signal received, draining queue...", w.ID)
@@ -72,13 +73,26 @@ func (w *Worker) drainAndExit() {
 		select {
 		case task := <-w.taskChan:
 			logger.NgapLog.Debugf("Worker %d processing residual task for UE ID %d", w.ID, task.UEID)
-			w.handler(task.Conn, task.Message)
+			w.execute(task)
 		default:
 			// Channel is empty, exit safely
 			logger.NgapLog.Infof("Worker %d: queue drained, stopped.", w.ID)
 			return
 		}
 	}
+}
+
+func (w *Worker) execute(task Task) {
+	if task.Callback == nil {
+		w.handler(task.Conn, task.Message)
+		return
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logger.NgapLog.Errorf("Worker %d UE callback panic: %v", w.ID, recovered)
+		}
+	}()
+	task.Callback()
 }
 
 // Submit submits a task to this worker's queue.
@@ -195,6 +209,18 @@ func GetScheduler() (*UEScheduler, error) {
 		return nil, fmt.Errorf("scheduler not initialized")
 	}
 	return globalScheduler, nil
+}
+
+func DispatchUECallback(ueID uint64, callback func()) bool {
+	if callback == nil {
+		return false
+	}
+	scheduler, err := GetScheduler()
+	if err != nil {
+		logger.NgapLog.Errorf("Cannot dispatch UE callback for UE ID %d: %v", ueID, err)
+		return false
+	}
+	return scheduler.DispatchTask(Task{UEID: ueID, Callback: callback})
 }
 
 // ShutdownScheduler gracefully shuts down the global scheduler.
