@@ -6,8 +6,10 @@ package factory
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,6 +48,16 @@ const (
 	AmfOamResUriPrefix           = "/namf-oam/v1"
 	AmfMbsComResUriPrefix        = "/namf-mbs-comm/v1"
 	AmfMbsBCResUriPrefix         = "/namf-mbs-bc/v1"
+	nagentDefaultBaseURI         = "http://127.0.0.1:8088"
+	nagentDefaultConnectMs       = 1000
+	nagentDefaultAttemptMs       = 2000
+	nagentDefaultTotalMs         = 5000
+	nagentDefaultMaxAttempts     = 3
+	nagentDefaultMaxPayload      = 65535
+	nagentDefaultMaxInFlight     = 64
+	nagentDefaultMaxPerUE        = 8
+	nagentDefaultQueueSize       = 256
+	nagentDefaultPendingTTL      = 60
 )
 
 type Config struct {
@@ -109,6 +121,7 @@ type Configuration struct {
 	DefaultUECtxReq        bool              `yaml:"defaultUECtxReq,omitempty" valid:"type(bool),optional"`
 	NgapWorkerPoolSize     int               `yaml:"ngapWorkerPoolSize,omitempty" valid:"type(int),optional"`
 	NgapTaskBufferSize     int               `yaml:"ngapTaskBufferSize,omitempty" valid:"type(int),optional"`
+	NAgent                 *NAgent           `yaml:"nagent,omitempty" valid:"optional"`
 }
 
 type Logger struct {
@@ -137,6 +150,11 @@ func (c *Configuration) validate() (bool, error) {
 
 	if c.Sbi != nil {
 		if _, err := c.Sbi.validate(); err != nil {
+			return false, err
+		}
+	}
+	if c.NAgent != nil {
+		if _, err := c.NAgent.validate(); err != nil {
 			return false, err
 		}
 	}
@@ -379,6 +397,82 @@ type Sbi struct {
 	BindingIPv4  string `yaml:"bindingIPv4,omitempty" valid:"required,host"`  // IP used to run the server in the node.
 	Port         int    `yaml:"port,omitempty" valid:"required,port"`
 	Tls          *Tls   `yaml:"tls,omitempty" valid:"optional"`
+}
+
+type NAgent struct {
+	Enabled             bool   `yaml:"enabled"`
+	BaseURI             string `yaml:"baseUri,omitempty"`
+	ConnectTimeoutMs    int    `yaml:"connectTimeoutMs,omitempty"`
+	AttemptTimeoutMs    int    `yaml:"attemptTimeoutMs,omitempty"`
+	TotalTimeoutMs      int    `yaml:"totalTimeoutMs,omitempty"`
+	MaxAttempts         int    `yaml:"maxAttempts,omitempty"`
+	MaxPayloadBytes     int    `yaml:"maxPayloadBytes,omitempty"`
+	MaxInFlight         int    `yaml:"maxInFlight,omitempty"`
+	MaxInFlightPerUE    int    `yaml:"maxInFlightPerUe,omitempty"`
+	QueueSize           int    `yaml:"queueSize,omitempty"`
+	PendingDLTTLSeconds int    `yaml:"pendingDlTtlSeconds,omitempty"`
+}
+
+func (n *NAgent) validate() (bool, error) {
+	if n == nil || !n.Enabled {
+		return true, nil
+	}
+	effective := n.withDefaults()
+	parsed, err := url.Parse(effective.BaseURI)
+	if err != nil || parsed.Scheme != "http" || parsed.Host == "" {
+		return false, fmt.Errorf("invalid NAgent baseUri %q: first version requires an absolute HTTP URL",
+			effective.BaseURI)
+	}
+	if effective.ConnectTimeoutMs <= 0 || effective.AttemptTimeoutMs <= 0 ||
+		effective.TotalTimeoutMs <= 0 || effective.TotalTimeoutMs < effective.AttemptTimeoutMs {
+		return false, fmt.Errorf("invalid NAgent timeout configuration")
+	}
+	if effective.MaxAttempts <= 0 || effective.MaxPayloadBytes <= 0 ||
+		effective.MaxPayloadBytes > 65535 || effective.MaxInFlight <= 0 ||
+		effective.MaxInFlightPerUE <= 0 || effective.MaxInFlightPerUE > 8 ||
+		effective.QueueSize < 0 || effective.PendingDLTTLSeconds <= 0 {
+		return false, fmt.Errorf("invalid NAgent resource limit configuration")
+	}
+	return true, nil
+}
+
+func (n *NAgent) withDefaults() NAgent {
+	result := NAgent{}
+	if n != nil {
+		result = *n
+	}
+	if result.BaseURI == "" {
+		result.BaseURI = nagentDefaultBaseURI
+	}
+	result.BaseURI = strings.TrimRight(result.BaseURI, "/")
+	if result.ConnectTimeoutMs == 0 {
+		result.ConnectTimeoutMs = nagentDefaultConnectMs
+	}
+	if result.AttemptTimeoutMs == 0 {
+		result.AttemptTimeoutMs = nagentDefaultAttemptMs
+	}
+	if result.TotalTimeoutMs == 0 {
+		result.TotalTimeoutMs = nagentDefaultTotalMs
+	}
+	if result.MaxAttempts == 0 {
+		result.MaxAttempts = nagentDefaultMaxAttempts
+	}
+	if result.MaxPayloadBytes == 0 {
+		result.MaxPayloadBytes = nagentDefaultMaxPayload
+	}
+	if result.MaxInFlight == 0 {
+		result.MaxInFlight = nagentDefaultMaxInFlight
+	}
+	if result.MaxInFlightPerUE == 0 {
+		result.MaxInFlightPerUE = nagentDefaultMaxPerUE
+	}
+	if result.QueueSize == 0 {
+		result.QueueSize = nagentDefaultQueueSize
+	}
+	if result.PendingDLTTLSeconds == 0 {
+		result.PendingDLTTLSeconds = nagentDefaultPendingTTL
+	}
+	return result
 }
 
 func (s *Sbi) validate() (bool, error) {
@@ -1051,4 +1145,11 @@ func (c *Config) GetNgapTaskBufferSize() int {
 		return c.Configuration.NgapTaskBufferSize
 	}
 	return 1000 // Default buffer size
+}
+
+func (c *Config) GetNAgentConfig() NAgent {
+	if c == nil || c.Configuration == nil || c.Configuration.NAgent == nil {
+		return (&NAgent{}).withDefaults()
+	}
+	return c.Configuration.NAgent.withDefaults()
 }
