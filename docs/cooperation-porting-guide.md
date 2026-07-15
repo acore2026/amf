@@ -12,9 +12,9 @@ DL Cooperation message type = 0xe2
 AP Container IEI            = 0x71
 ```
 
-当前流程由 UE 发起。UE 注册完成后发送受 NAS 安全保护的 UL Cooperation，AMF 解密、解析和处理各个 IE；需要响应时，AMF 通过 NGAP DownlinkNASTransport 返回一条或多条 DL Cooperation。
+当前流程由 UE 发起。UE 注册完成后发送受 NAS 安全保护的 UL Cooperation，AMF 解密、解析和处理各个 IE；需要响应时，AMF 通过 NGAP DownlinkNASTransport 返回一条或多条 DL Cooperation。默认配置会把重组完成的 AP Payload 通过 HTTP 发送给 NAgent，并把 NAgent JSON 响应封装为 DL AP Container；关闭 NAgent 时保留原有的本地直接回显行为。
 
-AMF 不会仅因为 UE 注册完成而主动发送 DL Cooperation。当前也没有新增 AP 层确认、重传或错误响应协议。
+AMF 不会仅因为 UE 注册完成而主动发送 DL Cooperation。NAgent 路径没有新增 AP 层确认或 AMF paging；HTTP 失败使用本文第 14 节定义的 JSON 错误载荷返回给 UE。
 
 ## 2. Cooperation 外层消息
 
@@ -50,7 +50,7 @@ UL 支持的已知 IE：
 ```text
 0x10  存入 NegotiatedIEs，并在 DL 中返回同值 0x10
 0x18  存入 NegotiatedIEs，但不生成 DL 0x18
-0x71  作为 AP Container 解码、重组、保存并重新生成 DL 分片
+0x71  作为 AP Container 解码、重组和保存；启用 NAgent 时异步调用 HTTP 并用响应生成 DL 分片
 ```
 
 DL 只允许：
@@ -246,6 +246,7 @@ sequenceDiagram
     participant NAS as AMF NAS/Security
     participant GMM as AMF GMM
     participant CTX as CooperationContext
+    participant NAgent
 
     UE->>RAN: Registration / Authentication / Security Mode
     UE->>RAN: Registration Complete
@@ -267,11 +268,18 @@ sequenceDiagram
             GMM->>NAS: Send ordinary DL response only, if any
         else AP complete
             GMM->>CTX: Store completed payload
-            GMM->>GMM: Build DL AP fragments
-            loop Each DL fragment
-                GMM->>NAS: Build security protected DL Cooperation 0xe2
-                NAS->>RAN: DownlinkNASTransport
-                RAN->>UE: DL Cooperation
+            GMM->>NAgent: POST /nagent-intent/v1/intent/{supi}
+            GMM-->>NAS: Send ordinary DL response immediately, if any
+            NAgent-->>GMM: 200 application/json
+            GMM->>CTX: Mark transaction Ready
+            alt UE is still connected
+                loop Each response DL fragment
+                    GMM->>NAS: Build security protected DL Cooperation 0xe2
+                    NAS->>RAN: DownlinkNASTransport
+                    RAN->>UE: DL Cooperation
+                end
+            else UE is offline
+                GMM->>CTX: Retain Ready response for reconnect
             end
         end
     end
@@ -394,7 +402,7 @@ nil,error      失败，当前 payload 的重组状态已清理
 
 ## 10. DL 再分片与消息分组
 
-AMF 响应的是完整重组后的载荷，不直接 mirror 某个 UL 原始片：
+AMF 始终基于完整载荷生成 DL，不直接 mirror 某个 UL 原始片。启用 NAgent 时待分片的是 HTTP 响应；关闭 NAgent 时待分片的是 UL 重组结果：
 
 ```text
 DF=0: 按最多 245 Payload bytes 生成 DL AP 分片
@@ -431,8 +439,9 @@ case nas.MsgTypeULCooperation:
 3. 先按 handler registry 处理 `0x10/0x18`。
 4. 要求本条消息最多一个 `0x71`。
 5. 解码 AP，加入重组器；错误只丢弃 AP 路径。
-6. 完成后保存 completed record，并生成 DL AP fragments。
-7. 对每个 DL IE group 调用 `SendDLCooperation`。
+6. 完成后保存 completed record；启用 NAgent 时创建事务并异步提交 HTTP，否则直接生成 DL AP fragments。
+7. HTTP 回调通过同一 UE 的 NGAP worker 串行化，响应 Ready 后生成 DL AP fragments。
+8. 对每个 DL IE group 调用 `SendDLCooperation`。
 
 普通 IE handler registry 便于以后扩展：
 
@@ -461,7 +470,7 @@ DL 使用现有 NAS security context 加密并计算 MAC，再调用 NGAP Downli
 
 ## 13. 日志与错误策略
 
-AP 格式错误、metadata 不一致、重叠、资源超限、超时和 DL 编码失败均记录日志后丢弃，不发送新增协议错误响应。日志应包含：
+AP 格式错误、metadata 不一致、重叠、重组资源超限、超时和 DL 编码失败均记录日志后丢弃，不发送重组层错误响应。进入 NAgent 事务后发生的 payload ID 冲突、HTTP 错误和 AMF HTTP 队列溢出会返回第 14.6 节定义的 JSON 错误 AP Payload。日志应包含：
 
 ```text
 AccessType, MessageIdentity
@@ -472,7 +481,121 @@ DF, MF, FragmentOffset, PayloadLength
 
 为避免大载荷刷屏，Payload hex 日志最多输出前 32 字节，同时记录完整长度。
 
-## 14. 测试要求
+## 14. NAgent HTTP integration v1
+
+### 14.1 配置
+
+默认 `amfcfg.yaml` 启用本地 mock 地址：
+
+```yaml
+configuration:
+  nagent:
+    enabled: true
+    baseUri: http://127.0.0.1:8088
+    connectTimeoutMs: 1000
+    attemptTimeoutMs: 2000
+    totalTimeoutMs: 5000
+    maxAttempts: 3
+    maxPayloadBytes: 65535
+    maxInFlight: 64
+    maxInFlightPerUe: 8
+    queueSize: 256
+    pendingDlTtlSeconds: 60
+```
+
+第一版只接受绝对 `http://` URL，不启用 TLS 和认证。AMF 与 NAgent 位于不同容器时，`127.0.0.1` 必须改成 NAgent 的容器 DNS 名称或宿主机可达地址。
+
+### 14.2 HTTP 契约
+
+```http
+POST /nagent-intent/v1/intent/{supi}
+Content-Type: application/json
+Accept: application/json
+Idempotency-Key: <64 lowercase hex characters>
+
+<完整 AP Container Payload，字节内容不改写>
+```
+
+`{supi}` 使用 URL path escaping。请求 body 必须是合法 JSON，当前没有额外 envelope；例如 UL 重组载荷为：
+
+```json
+{"intent":"locate","target":"cell-1"}
+```
+
+NAgent 成功响应必须是 `HTTP 200`、`Content-Type: application/json` 且 body 为合法 JSON。第一版 mock 原样返回请求 body。AMF 不解析业务字段，只验证 JSON 和大小，再把响应 body 作为 DL AP Payload。
+
+### 14.3 幂等与事务键
+
+每个 UE 的事务以 `ContainerPayloadId` 为索引。请求指纹覆盖 SUPI、MessageIdentity、AccessType、ContainerType、PTI、PayloadId 和 payload SHA-256：
+
+```text
+相同 PayloadId + 相同指纹 + Pending -> 视为重复上报，不再次调用 HTTP
+相同 PayloadId + 相同指纹 + Ready/Sent -> 重放已缓存 DL 响应
+相同 PayloadId + 不同指纹 -> 返回 PAYLOAD_ID_CONFLICT
+不同 PayloadId -> 可以并行，响应允许乱序完成
+```
+
+HTTP `Idempotency-Key` 由协议版本、SUPI、消息 metadata 和 payload SHA-256 确定。一次请求的所有重试使用同一个 key。
+
+### 14.4 异步处理与 DL 字段
+
+AP 完成后 HTTP 请求不会阻塞当前 GMM worker。当前 UL 中的普通 `0x10` 响应立即下发，NAgent 响应到达后再单独下发 AP 响应。
+
+DL AP Container 复用 UL 的：
+
+```text
+MessageIdentity
+ContainerType
+ContainerTypePTI
+ContainerPayloadId
+```
+
+AMF 将 DL `DF` 设为 0，允许按当前外层 length 限制重新分片；`FragmentOffset` 从 0 开始按响应字节计算。HTTP callback 进入与该 UE NGAP 消息相同的 worker 队列，避免并发修改 NAS DL count。若请求期间旧 `RanUe` 被替换，回调只把响应保留为 Ready，不通过旧关联下发。
+
+### 14.5 重试、并发和离线行为
+
+以下情况可重试：DNS/连接失败、attempt timeout、HTTP 408、429、500、502、503、504。其他 4xx、非法 JSON 响应和超大响应不重试。单次连接、单次尝试和总请求分别受 `connectTimeoutMs`、`attemptTimeoutMs` 和 `totalTimeoutMs` 限制。
+
+全局最多 64 个 HTTP worker，队列默认 256；每 UE 最多保留 8 个 Pending/Ready/Sent 事务。UE 删除时取消 Pending HTTP context 并停止 Ready TTL timer。
+
+HTTP 响应到达时 UE 离线，不发 paging。响应保持 Ready 最多 60 秒，在 UE 重新进入 Registered 或成功处理 Service Request 后下发；超时后删除。已经 Sent 的事务暂留用于重复 UL 的幂等重放，容量不足时优先淘汰最旧 Sent 事务。
+
+### 14.6 错误 AP Payload
+
+NAgent 路径错误统一编码为合法 JSON：
+
+```json
+{"$nagent":{"version":1,"status":"error","code":"NAGENT_TIMEOUT","retryable":true,"httpStatus":0,"message":"NAgent did not respond before the deadline"}}
+```
+
+当前错误 code 包括：
+
+```text
+INVALID_JSON
+INVALID_REQUEST
+PAYLOAD_TOO_LARGE
+PAYLOAD_ID_CONFLICT
+AMF_QUEUE_FULL
+NAGENT_TIMEOUT
+NAGENT_UNAVAILABLE
+NAGENT_REJECTED
+NAGENT_INVALID_RESPONSE
+NAGENT_RESPONSE_TOO_LARGE
+```
+
+错误 body 同样使用原 PayloadId/type/PTI 包装成 DL AP Container。日志不记录 payload，不把明文 SUPI 写入 NAgent 日志；只记录截断的 SUPI hash、payload length 和 idempotency key。指标 label 不应包含 SUPI。
+
+### 14.7 本地 mock
+
+启动原样回显 mock：
+
+```bash
+go run ./cmd/nagent-mock -addr :8088
+```
+
+可用 `-delay 250ms` 模拟慢响应，或用 `-status 503` 验证重试和错误映射。mock 只接受正确路径、POST、JSON Content-Type 和合法 JSON。
+
+## 15. 测试要求
 
 至少覆盖：
 
@@ -487,6 +610,9 @@ DF, MF, FragmentOffset, PayloadLength
 9. DL builder 拒绝 `0x18` 和多个 `0x71`。
 10. 注册完成后通过受保护 UL 注入乱序分片，并验证多条受保护 DL。
 11. context、GMM 和 NGAP 相关 race tests。
+12. HTTP header/path/body、稳定幂等 key、retryable/permanent status 和总超时。
+13. UL 重组 -> mock HTTP -> DL 再分片的跨层回显。
+14. Pending 重复、PayloadId 冲突、并发乱序完成、离线 Ready 和重连补发。
 
 相关文件：
 
@@ -500,6 +626,10 @@ internal/gmm/message/cooperation_test.go
 internal/nas/ul_cooperation_test.go
 internal/nas/dl_cooperation_test.go
 internal/ngap/registration_procedure_test.go
+internal/nagent/client_test.go
+internal/nagent/dispatcher_test.go
+internal/nagent/mock_test.go
+internal/gmm/ap_container_intent_test.go
 ```
 
 验证命令：
@@ -510,12 +640,12 @@ go test ./...
 
 cd ../..
 go test ./...
-go test -race ./internal/context ./internal/gmm ./internal/gmm/message ./internal/ngap
+go test -race ./internal/context ./internal/gmm ./internal/gmm/message ./internal/nagent ./internal/ngap
 ```
 
 NGAP 测试通过 `httptest` 监听本地端口，受限 sandbox 中可能需要开放 listen 权限。
 
-## 15. 移植检查表
+## 16. 移植检查表
 
 ```text
 [ ] 注册 NAS message type 0xe1/0xe2，并接入 plain encode/decode
@@ -533,10 +663,13 @@ NGAP 测试通过 `httptest` 监听本地端口，受限 sandbox 中可能需要
 [ ] 每条 Cooperation 最多一个 0x71
 [ ] 多个 DL fragments 分成多条 DL Cooperation 发送
 [ ] 接入 NAS security 和 NGAP DownlinkNASTransport
+[ ] 增加 NAgent 配置、严格 JSON HTTP client、重试和幂等 key
+[ ] 增加每 UE intent 状态、HTTP dispatcher、UE worker callback 和离线 TTL
+[ ] 提供 mock NAgent，并验证 HTTP 回显到 DL AP 再分片
 [ ] 增加 codec、重组、GMM、NGAP 和 race tests
 ```
 
-## 16. 常见问题
+## 17. 常见问题
 
 ### 是否兼容旧 UE 的 4-byte ContainerContent？
 
