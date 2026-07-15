@@ -88,6 +88,24 @@ func TestAPIntentEnforcesPerUELimit(t *testing.T) {
 	}
 }
 
+func TestAPIntentHonorsConfiguredPerUELimit(t *testing.T) {
+	ctx := NewCooperationContext()
+	for id := uint16(1); id <= 2; id++ {
+		result, _ := ctx.BeginAPIntentWithLimit(
+			testAPIntentRequest(id, []byte(`{"ok":true}`)), time.Now(), 2,
+		)
+		if result != APIntentBeginNew {
+			t.Fatalf("payload %d result=%v", id, result)
+		}
+	}
+	result, _ := ctx.BeginAPIntentWithLimit(
+		testAPIntentRequest(3, []byte(`{"overflow":true}`)), time.Now(), 2,
+	)
+	if result != APIntentBeginLimit {
+		t.Fatalf("configured overflow result=%v, want limit", result)
+	}
+}
+
 func TestStopAPContainerReassemblyTimersCancelsIntent(t *testing.T) {
 	ue := &AmfUe{}
 	ctx := ue.GetOrCreateCooperationContext()

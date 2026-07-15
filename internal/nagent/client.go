@@ -32,6 +32,7 @@ const (
 
 type IntentRequest struct {
 	SUPI            string
+	AccessType      string
 	MessageIdentity uint8
 	ContainerType   uint16
 	PTI             uint8
@@ -198,10 +199,16 @@ func (c *Client) submitAttempt(ctx context.Context, request IntentRequest, key s
 }
 
 func IdempotencyKey(request IntentRequest) string {
+	hash := IntentRequestFingerprint(request)
+	return hex.EncodeToString(hash[:])
+}
+
+func IntentRequestFingerprint(request IntentRequest) [32]byte {
 	h := sha256.New()
 	_, _ = h.Write([]byte("nagent-intent-v1\x00"))
-	_, _ = h.Write([]byte(request.SUPI))
-	_, _ = h.Write([]byte{0, request.MessageIdentity})
+	writeLengthPrefixedString(h, request.SUPI)
+	writeLengthPrefixedString(h, request.AccessType)
+	_, _ = h.Write([]byte{request.MessageIdentity})
 	var fields [5]byte
 	binary.BigEndian.PutUint16(fields[0:2], request.ContainerType)
 	fields[2] = request.PTI
@@ -209,7 +216,16 @@ func IdempotencyKey(request IntentRequest) string {
 	_, _ = h.Write(fields[:])
 	payloadHash := sha256.Sum256(request.Payload)
 	_, _ = h.Write(payloadHash[:])
-	return hex.EncodeToString(h.Sum(nil))
+	var result [32]byte
+	copy(result[:], h.Sum(nil))
+	return result
+}
+
+func writeLengthPrefixedString(writer io.Writer, value string) {
+	var length [4]byte
+	binary.BigEndian.PutUint32(length[:], uint32(len(value)))
+	_, _ = writer.Write(length[:])
+	_, _ = writer.Write([]byte(value))
 }
 
 func isRetryableStatus(status int) bool {

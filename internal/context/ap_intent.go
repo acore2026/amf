@@ -56,6 +56,17 @@ func (c *CooperationContext) BeginAPIntent(
 	request APIntentRequest,
 	now time.Time,
 ) (APIntentBeginResult, APIntentTransaction) {
+	return c.BeginAPIntentWithLimit(request, now, int(MaxAPIntentTransactionsPerUE))
+}
+
+func (c *CooperationContext) BeginAPIntentWithLimit(
+	request APIntentRequest,
+	now time.Time,
+	maxTransactions int,
+) (APIntentBeginResult, APIntentTransaction) {
+	if maxTransactions <= 0 || maxTransactions > int(MaxAPIntentTransactionsPerUE) {
+		maxTransactions = int(MaxAPIntentTransactionsPerUE)
+	}
 	state := c.APContainer
 	state.Mu.Lock()
 	defer state.Mu.Unlock()
@@ -72,8 +83,8 @@ func (c *CooperationContext) BeginAPIntent(
 		}
 	}
 
-	ensureAPIntentCapacityLocked(state, now)
-	if len(state.IntentTransactions) >= int(MaxAPIntentTransactionsPerUE) {
+	ensureAPIntentCapacityLocked(state, now, maxTransactions)
+	if len(state.IntentTransactions) >= maxTransactions {
 		return APIntentBeginLimit, APIntentTransaction{}
 	}
 	state.NextIntentGeneration++
@@ -165,6 +176,20 @@ func (c *CooperationContext) MarkAPIntentSent(payloadID uint16, generation uint6
 	return true
 }
 
+func (c *CooperationContext) APIntent(
+	payloadID uint16,
+	generation uint64,
+) (APIntentTransaction, bool) {
+	state := c.APContainer
+	state.Mu.Lock()
+	defer state.Mu.Unlock()
+	transaction := state.IntentTransactions[payloadID]
+	if transaction == nil || transaction.Generation != generation {
+		return APIntentTransaction{}, false
+	}
+	return cloneAPIntentTransaction(transaction), true
+}
+
 func (c *CooperationContext) RemoveAPIntent(payloadID uint16, generation uint64) bool {
 	state := c.APContainer
 	state.Mu.Lock()
@@ -187,13 +212,13 @@ func removeAPIntentLocked(state *APContainerState, payloadID uint16, generation 
 	return true
 }
 
-func ensureAPIntentCapacityLocked(state *APContainerState, now time.Time) {
+func ensureAPIntentCapacityLocked(state *APContainerState, now time.Time, maxTransactions int) {
 	for payloadID, transaction := range state.IntentTransactions {
 		if !transaction.ExpiresAt.IsZero() && !now.Before(transaction.ExpiresAt) {
 			removeAPIntentLocked(state, payloadID, transaction.Generation)
 		}
 	}
-	for len(state.IntentTransactions) >= int(MaxAPIntentTransactionsPerUE) {
+	for len(state.IntentTransactions) >= maxTransactions {
 		var oldest *APIntentTransaction
 		for _, transaction := range state.IntentTransactions {
 			if transaction.Status != APIntentSent {

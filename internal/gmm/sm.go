@@ -75,6 +75,7 @@ func Registered(state *fsm.State, event fsm.EventType, args fsm.ArgsType) {
 		// If we have a radio connection, and we enter the registered state, then we increase the gauge
 		if amfUe.CmConnect(accessType) {
 			business_metrics.IncrUeConnectivityGauge(accessType)
+			sendPendingAPIntentResponses(amfUe, accessType)
 		}
 
 	case GmmMessageEvent:
@@ -112,6 +113,8 @@ func Registered(state *fsm.State, event fsm.EventType, args fsm.ArgsType) {
 		case nas.MsgTypeServiceRequest:
 			if err := HandleServiceRequest(amfUe, accessType, gmmMessage.ServiceRequest); err != nil {
 				logger.GmmLog.Errorln(err)
+			} else {
+				sendPendingAPIntentResponses(amfUe, accessType)
 			}
 		case nas.MsgTypeNotificationResponse:
 			if err := HandleNotificationResponse(amfUe, gmmMessage.NotificationResponse); err != nil {

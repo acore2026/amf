@@ -40,6 +40,7 @@ func TestClientSubmitIntentEchoesJSONAndSetsHeaders(t *testing.T) {
 	client := newTestClient(server.URL)
 	request := IntentRequest{
 		SUPI:            "imsi-001010000000001",
+		AccessType:      "3GPP_ACCESS",
 		MessageIdentity: 1,
 		ContainerType:   0x0100,
 		PTI:             5,
@@ -55,6 +56,28 @@ func TestClientSubmitIntentEchoesJSONAndSetsHeaders(t *testing.T) {
 	}
 	if len(gotKey) != 64 || gotKey != IdempotencyKey(request) {
 		t.Fatalf("Idempotency-Key = %q", gotKey)
+	}
+}
+
+func TestIdempotencyKeyCoversIntentMetadata(t *testing.T) {
+	base := validIntentRequest()
+	base.AccessType = "3GPP_ACCESS"
+	want := IdempotencyKey(base)
+	mutations := []func(*IntentRequest){
+		func(request *IntentRequest) { request.SUPI += "1" },
+		func(request *IntentRequest) { request.AccessType = "NON_3GPP_ACCESS" },
+		func(request *IntentRequest) { request.MessageIdentity++ },
+		func(request *IntentRequest) { request.ContainerType++ },
+		func(request *IntentRequest) { request.PTI++ },
+		func(request *IntentRequest) { request.PayloadID++ },
+		func(request *IntentRequest) { request.Payload = []byte(`{"intent":"different"}`) },
+	}
+	for index, mutate := range mutations {
+		request := base
+		mutate(&request)
+		if got := IdempotencyKey(request); got == want {
+			t.Fatalf("mutation %d did not change Idempotency-Key", index)
+		}
 	}
 }
 
@@ -175,6 +198,7 @@ func newTestClient(baseURI string) *Client {
 func validIntentRequest() IntentRequest {
 	return IntentRequest{
 		SUPI:            "imsi-001010000000001",
+		AccessType:      "3GPP_ACCESS",
 		MessageIdentity: 1,
 		ContainerType:   0x0100,
 		PTI:             5,

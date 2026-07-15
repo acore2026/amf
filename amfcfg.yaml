@@ -113,6 +113,18 @@ configuration:
     maxAttempts: 2
     maxInitTimeout: 2
   defaultUECtxReq: false
+  nagent:
+    enabled: true
+    baseUri: http://127.0.0.1:8088
+    connectTimeoutMs: 1000
+    attemptTimeoutMs: 2000
+    totalTimeoutMs: 5000
+    maxAttempts: 3
+    maxPayloadBytes: 65535
+    maxInFlight: 64
+    maxInFlightPerUe: 8
+    queueSize: 256
+    pendingDlTtlSeconds: 60
   metrics:
     enable: false
     scheme: http

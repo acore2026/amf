@@ -215,6 +215,11 @@ func processULCooperationIEs(ue *context.AmfUe, anType models.AccessType,
 		Payload:            complete.Payload,
 		CompletedAt:        time.Now(),
 	})
+	if apIntentIntegrationEnabled() {
+		return processCompletedAPIntent(
+			ue, anType, ulCooperation.MessageIdentity, complete, ordinaryDLIEs,
+		)
+	}
 	apResponses, err := buildDLAPContainerIEs(ulCooperation.MessageIdentity, complete)
 	if err != nil {
 		logAPContainerDrop(ue, anType, ulCooperation.MessageIdentity, complete, err)

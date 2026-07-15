@@ -6,13 +6,16 @@ import (
 	"os"
 	"runtime/debug"
 	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 
 	amf_context "github.com/acore2026/amf/internal/context"
+	"github.com/acore2026/amf/internal/gmm"
 	"github.com/acore2026/amf/internal/logger"
 	business_metrics "github.com/acore2026/amf/internal/metrics/business"
+	"github.com/acore2026/amf/internal/nagent"
 	"github.com/acore2026/amf/internal/ngap"
 	ngap_message "github.com/acore2026/amf/internal/ngap/message"
 	ngap_service "github.com/acore2026/amf/internal/ngap/service"
@@ -45,10 +48,11 @@ type AmfApp struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	processor     *processor.Processor
-	consumer      *consumer.Consumer
-	sbiServer     *sbi.Server
-	metricsServer *metrics.Server
+	processor        *processor.Processor
+	consumer         *consumer.Consumer
+	sbiServer        *sbi.Server
+	metricsServer    *metrics.Server
+	nagentDispatcher *nagent.Dispatcher
 }
 
 func NewApp(ctx context.Context, cfg *factory.Config, tlsKeyLogPath string) (*AmfApp, error) {
@@ -87,10 +91,38 @@ func NewApp(ctx context.Context, cfg *factory.Config, tlsKeyLogPath string) (*Am
 			return nil, err
 		}
 	}
+	amf.configureNAgent()
 
 	AMF = amf
 
 	return amf, nil
+}
+
+func (a *AmfApp) configureNAgent() {
+	nagentConfig := a.cfg.GetNAgentConfig()
+	if !nagentConfig.Enabled {
+		gmm.ConfigureAPIntentIntegration(false, nil, nil, 0, 0)
+		return
+	}
+	client := nagent.NewClient(nagent.ClientConfig{
+		BaseURI:         nagentConfig.BaseURI,
+		ConnectTimeout:  time.Duration(nagentConfig.ConnectTimeoutMs) * time.Millisecond,
+		AttemptTimeout:  time.Duration(nagentConfig.AttemptTimeoutMs) * time.Millisecond,
+		TotalTimeout:    time.Duration(nagentConfig.TotalTimeoutMs) * time.Millisecond,
+		MaxAttempts:     nagentConfig.MaxAttempts,
+		MaxPayloadBytes: nagentConfig.MaxPayloadBytes,
+		InitialBackoff:  100 * time.Millisecond,
+	})
+	a.nagentDispatcher = nagent.NewDispatcher(
+		a.ctx, client, nagentConfig.MaxInFlight, nagentConfig.QueueSize,
+	)
+	gmm.ConfigureAPIntentIntegration(
+		true,
+		a.nagentDispatcher,
+		ngap.DispatchUECallback,
+		time.Duration(nagentConfig.PendingDLTTLSeconds)*time.Second,
+		nagentConfig.MaxInFlightPerUE,
+	)
 }
 
 func getCustomMetrics(cfg *factory.Config) map[utils.MetricTypeEnabled][]prometheus.Collector {
@@ -290,6 +322,10 @@ func (a *AmfApp) WaitRoutineStopped() {
 
 func (a *AmfApp) terminateProcedure() {
 	logger.MainLog.Infof("Terminating AMF...")
+	if a.nagentDispatcher != nil {
+		a.nagentDispatcher.Stop()
+	}
+	gmm.ConfigureAPIntentIntegration(false, nil, nil, 0, 0)
 	a.CallServerStop()
 	// deregister with NRF
 	problemDetails, err_deg := a.Consumer().SendDeregisterNFInstance()
