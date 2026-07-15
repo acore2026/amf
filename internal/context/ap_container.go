@@ -62,10 +62,12 @@ type CompletedAPContainer struct {
 }
 
 type APContainerState struct {
-	Mu             sync.Mutex
-	Reassemblies   map[APContainerReassemblyKey]*APContainerReassemblyState
-	Completed      map[uint16]CompletedAPContainer
-	NextGeneration uint64
+	Mu                   sync.Mutex
+	Reassemblies         map[APContainerReassemblyKey]*APContainerReassemblyState
+	Completed            map[uint16]CompletedAPContainer
+	IntentTransactions   map[uint16]*APIntentTransaction
+	NextGeneration       uint64
+	NextIntentGeneration uint64
 }
 
 func NewCooperationContext() *CooperationContext {
@@ -73,8 +75,9 @@ func NewCooperationContext() *CooperationContext {
 		LastULIEs:     make(map[uint8][][]byte),
 		NegotiatedIEs: make(map[uint8][]byte),
 		APContainer: &APContainerState{
-			Reassemblies: make(map[APContainerReassemblyKey]*APContainerReassemblyState),
-			Completed:    make(map[uint16]CompletedAPContainer),
+			Reassemblies:       make(map[APContainerReassemblyKey]*APContainerReassemblyState),
+			Completed:          make(map[uint16]CompletedAPContainer),
+			IntentTransactions: make(map[uint16]*APIntentTransaction),
 		},
 	}
 }
@@ -95,8 +98,9 @@ func (ue *AmfUe) GetOrCreateCooperationContext() *CooperationContext {
 	}
 	if ue.CooperationContext.APContainer == nil {
 		ue.CooperationContext.APContainer = &APContainerState{
-			Reassemblies: make(map[APContainerReassemblyKey]*APContainerReassemblyState),
-			Completed:    make(map[uint16]CompletedAPContainer),
+			Reassemblies:       make(map[APContainerReassemblyKey]*APContainerReassemblyState),
+			Completed:          make(map[uint16]CompletedAPContainer),
+			IntentTransactions: make(map[uint16]*APIntentTransaction),
 		}
 	} else {
 		if ue.CooperationContext.APContainer.Reassemblies == nil {
@@ -105,6 +109,9 @@ func (ue *AmfUe) GetOrCreateCooperationContext() *CooperationContext {
 		}
 		if ue.CooperationContext.APContainer.Completed == nil {
 			ue.CooperationContext.APContainer.Completed = make(map[uint16]CompletedAPContainer)
+		}
+		if ue.CooperationContext.APContainer.IntentTransactions == nil {
+			ue.CooperationContext.APContainer.IntentTransactions = make(map[uint16]*APIntentTransaction)
 		}
 	}
 	return ue.CooperationContext
@@ -162,5 +169,14 @@ func (ue *AmfUe) StopAPContainerReassemblyTimers() {
 			reassembly.Timer.Stop()
 		}
 		delete(state.Reassemblies, key)
+	}
+	for payloadID, transaction := range state.IntentTransactions {
+		if transaction.Cancel != nil {
+			transaction.Cancel()
+		}
+		if transaction.Timer != nil {
+			transaction.Timer.Stop()
+		}
+		delete(state.IntentTransactions, payloadID)
 	}
 }
