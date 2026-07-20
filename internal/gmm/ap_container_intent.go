@@ -200,6 +200,7 @@ func processCompletedAPIntent(
 			},
 		})
 	})
+	sendAPIntentACK(ue, accessType, messageIdentity, complete)
 	err = runtime.Dispatcher.Submit(nagent.Job{
 		Context: jobContext,
 		Request: requestForHTTP,
@@ -220,6 +221,36 @@ func processCompletedAPIntent(
 		return buildImmediateAPIntentError(ordinary, request, code, true, 0)
 	}
 	return nil, nil
+}
+
+func sendAPIntentACK(
+	ue *amf_context.AmfUe,
+	accessType models.AccessType,
+	messageIdentity uint8,
+	complete *nasMessage.APContainer,
+) {
+	ackPayload := []byte(`{"$nagent":{"version":1,"status":"accepted"}}`)
+	ackContainer := &nasMessage.APContainer{
+		ContainerType:      apIntentResponseContainerType,
+		ContainerTypePTI:   complete.ContainerTypePTI,
+		ContainerPayloadID: complete.ContainerPayloadID,
+		ContainerFlags:     nasMessage.APContainerFlagDF,
+		FragmentOffset:     0,
+		Payload:            ackPayload,
+	}
+	ackIEs, err := buildDLAPContainerIEs(messageIdentity, ackContainer)
+	if err != nil {
+		ue.GmmLog.Errorf("Build ACK AP Container failed: %v", err)
+		return
+	}
+	ranUe := ue.APDeliveryRanUe(accessType)
+	if ranUe == nil {
+		ue.GmmLog.Warn("No RanUe available for ACK delivery")
+		return
+	}
+	if _, err := gmm_message.SendDLCooperationWithResult(ranUe, messageIdentity, ackIEs); err != nil {
+		ue.GmmLog.Errorf("Send ACK DLCooperation failed: %v", err)
+	}
 }
 
 func handleAPIntentHTTPResult(

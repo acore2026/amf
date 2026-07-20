@@ -23,10 +23,10 @@ func newEmbeddedNAgentMock(address string, handler http.Handler) (*embeddedNAgen
 		server: &http.Server{
 			Addr:              address,
 			Handler:           handler,
-			ReadHeaderTimeout: 2 * time.Second,
-			ReadTimeout:       3 * time.Second,
-			WriteTimeout:      3 * time.Second,
-			IdleTimeout:       30 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       30 * time.Second,
 		},
 	}, nil
 }

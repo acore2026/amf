@@ -65,10 +65,13 @@ sequenceDiagram
         CTX-->>GMM: Complete AP Container
         GMM->>GMM: Validate full Intent JSON
         GMM->>CTX: Create AP Intent transaction
+        GMM->>NAS: Build DL Cooperation 0xe2 (ACK)
+        NAS->>RAN: DownlinkNASTransport
+        RAN->>UE: DL Cooperation (ACK)
         GMM->>HTTP: Queue HTTP POST
         HTTP->>NAgent: POST /nagent-intent/v1/intent/{supi}<br/>Body = AP payload
 
-        alt HTTP response within 3s
+        alt HTTP response within deadline
             NAgent-->>HTTP: HTTP JSON response
             HTTP-->>GMM: Result
         else timeout or HTTP failure
@@ -80,7 +83,7 @@ sequenceDiagram
         alt UE has delivery context
             GMM->>NAS: Build DL Cooperation 0xe2
             NAS->>RAN: DownlinkNASTransport
-            RAN->>UE: DL Cooperation
+            RAN->>UE: DL Cooperation (NAgent response)
         else UE temporarily unavailable
             CTX-->>GMM: Keep Ready response for later delivery
         end
@@ -363,7 +366,58 @@ X-AP-Payload-ID
 回显上述 X-* 关联 header
 ```
 
-## 10. 超时和错误响应
+## 10. ACK 确认消息
+
+AMF 在转发给 NAgent 之前，会先向 UE 下发一条 ACK DL Cooperation 消息，告知 UE 请求已被接受并正在处理。
+
+ACK 发送时机：AP Intent 事务创建成功（`BeginAPIntentWithLimit` 返回 `BeginNew`）且 Dispatcher 可用后、`Dispatcher.Submit` 之前。
+
+ACK 消息格式：
+
+```text
+DL Cooperation NAS message type = 0xe2
+DL AP Container:
+  ContainerType      = 0x0101
+  ContainerTypePTI   = 原 UL PTI
+  ContainerPayloadId = 原 UL PayloadId
+  ContainerFlags     = 0x02 (DF=1, MF=0)
+  FragmentOffset     = 0
+  Payload            = ACK JSON
+```
+
+ACK JSON payload：
+
+```json
+{"$nagent":{"version":1,"status":"accepted"}}
+```
+
+UE 可通过以下字段区分 ACK 和最终 NAgent 响应：
+
+```text
+ACK:
+  Payload JSON 中 status = "accepted"
+  Payload JSON 中不含 code/retryable/httpStatus/message 等错误字段
+
+最终响应:
+  Payload 为 NAgent HTTP response body（原样透传）
+  或错误 payload（status = "error"，含 code/message 等字段）
+```
+
+完整时序：
+
+```text
+UE --UL Cooperation(AP Container)--> AMF
+                                     AMF: 分片重组 → Intent JSON 校验 → 创建事务
+  UE <--DL Cooperation(ACK)--> AMF       Payload: {"$nagent":{"version":1,"status":"accepted"}}
+                                     AMF: → HTTP POST NAgent
+                                     ... NAgent 处理（mock 默认延迟 8 秒）...
+                                     NAgent --HTTP 响应--> AMF
+  UE <--DL Cooperation(NAgent响应)--> AMF
+```
+
+ACK 发送失败（如 RanUe 不可用）不会阻塞 NAgent 转发流程，AMF 会记录警告日志后继续提交 HTTP 请求。
+
+## 11. 超时和错误响应
 
 默认 NAgent 总等待时间：
 
@@ -412,7 +466,7 @@ DL PayloadId     = 原 UL PayloadId
 DL Payload       = 错误 JSON
 ```
 
-## 11. DL AP Container 生成
+## 12. DL AP Container 生成
 
 NAgent 成功或失败后，AMF 都会生成 DL AP Container。当前 DL ContainerType 固定为：
 
@@ -458,7 +512,7 @@ DL #2:
 
 每条 DL Cooperation 最多一个 `0x71`。
 
-## 12. NAS 和 NGAP 投递行为
+## 13. NAS 和 NGAP 投递行为
 
 DL Cooperation 会被封装为 DownlinkNASTransport，经 NAS security 保护后通过 NGAP 下发。
 
@@ -489,7 +543,7 @@ stateDiagram-v2
     Pending --> [*]: dispatcher rejected / UE cleanup
 ```
 
-## 13. 配置
+## 14. 配置
 
 默认配置位置：
 
@@ -499,9 +553,9 @@ configuration:
     enabled: true
     baseUri: http://127.0.0.1:8088
     connectTimeoutMs: 1000
-    attemptTimeoutMs: 2000
-    totalTimeoutMs: 3000
-    maxAttempts: 3
+    attemptTimeoutMs: 10000
+    totalTimeoutMs: 12000
+    maxAttempts: 1
     maxPayloadBytes: 65535
     maxInFlight: 64
     maxInFlightPerUe: 8
@@ -510,7 +564,7 @@ configuration:
     mock:
       enabled: true
       listenAddress: 127.0.0.1:8088
-      delayMs: 0
+      delayMs: 8000
       status: 200
 ```
 
@@ -523,9 +577,16 @@ enabled
 baseUri
   NAgent 服务地址。第一版只支持 http，不支持 https。
 
+attemptTimeoutMs
+  单次 HTTP 请求超时。需大于 mock.delayMs。
+  当前默认 10000ms（10 秒），配合 8 秒延迟使用。
+
 totalTimeoutMs
-  从提交 HTTP job 到得到最终结果的总截止时间。
-  当前默认 3000ms。
+  从提交 HTTP job 到得到最终结果的总截止时间。需大于 mock.delayMs。
+  当前默认 12000ms（12 秒），配合 8 秒延迟使用。
+
+maxAttempts
+  HTTP 重试次数。当前设为 1（不重试），因为每次请求含 8 秒延迟。
 
 maxInFlight
   全局并发 HTTP job 上限。
@@ -541,11 +602,15 @@ pendingDlTtlSeconds
 
 mock.enabled
   启动 AMF 时内嵌一个 mock NAgent。
+
+mock.delayMs
+  Mock NAgent 响应延迟毫秒数。当前设为 8000（8 秒）。
+  需确保 attemptTimeoutMs 和 totalTimeoutMs 大于此值。
 ```
 
-## 14. 完整消息示例
+## 15. 完整消息示例
 
-### 14.1 UL Cooperation plain NAS
+### 15.1 UL Cooperation plain NAS
 
 假设：
 
@@ -612,7 +677,7 @@ UL Cooperation plain NAS：
 
 实际空口/NGAP 中该 plain NAS 会被 NAS security 包成 protected NAS。
 
-### 14.2 NAgent HTTP request
+### 15.2 NAgent HTTP request
 
 AMF 转发的 HTTP body 与上面的 AP payload 完全一致：
 
@@ -631,7 +696,7 @@ X-AP-Payload-ID: 4660
 {"intentId":"intent-001","issuer":"ue","intentPriority":10,"intentType":"location","intentDescription":"Locate the target UE","object":"ue-location","constraint":"accuracy<100m","target":"imsi-001010000000002"}
 ```
 
-### 14.3 NAgent HTTP response
+### 15.3 NAgent HTTP response
 
 mock NAgent 示例响应：
 
@@ -650,7 +715,49 @@ X-AP-Payload-ID: 4660
 
 真实 NAgent 可以返回其他合法 JSON。AMF 会把 response body 原样放进 DL AP Container。
 
-### 14.4 DL Cooperation plain NAS
+### 15.4 DL Cooperation ACK（新增）
+
+AMF 在收到 UL Cooperation 后、转发 NAgent 前发送的 ACK 消息。
+
+假设 UL 参数：
+
+```text
+MessageIdentity  = 0x01
+ContainerType    = 0x0101
+PTI              = 0x2a
+PayloadId        = 0x1234
+```
+
+ACK JSON payload：
+
+```json
+{"$nagent":{"version":1,"status":"accepted"}}
+```
+
+DL Cooperation plain NAS（ACK）：
+
+```text
+7e 00 e2 01
+71 25
+01 01 00 21 2a 12 34 02 00 00
+7b 22 24 6e 61 67 65 6e 74 22 3a 7b 22 76 65 72 73
+69 6f 6e 22 3a 31 2c 22 73 74 61 74 75 73 22 3a 22
+61 63 63 65 70 74 65 64 22 7d 7d
+```
+
+AP Container 解析：
+
+```text
+01 01        ContainerType = 0x0101
+00 21        ContainerContentLength = 33 = 6 + 27
+2a           PTI, same as UL
+12 34        PayloadId, same as UL
+02           Flags = DF (不分片)
+00 00        FragmentOffset = 0
+7b ... 7d    Payload = {"$nagent":{"version":1,"status":"accepted"}}, 27 bytes
+```
+
+### 15.5 DL Cooperation plain NAS
 
 如果 response body 仍为 210 字节，DL AP Container 可以单片发送：
 
@@ -675,7 +782,7 @@ DL AP header：
 
 如果 response body 超过单条外层 IE 的承载上限，AMF 会拆成多条 DL Cooperation。第一条可以带 `0x10`，后续只带 `0x71`。
 
-## 15. 代码入口
+## 16. 代码入口
 
 主要代码位置：
 
@@ -709,7 +816,7 @@ internal/ngap/scheduler.go
   DL NAS write result 和 UE callback 调度
 ```
 
-## 16. 实现边界
+## 17. 实现边界
 
 当前版本刻意不做以下事情：
 
@@ -717,7 +824,6 @@ internal/ngap/scheduler.go
 不兼容旧 4-byte ContainerContent AP 格式
 不从 NAgent response body 解析 PTI
 不在 UE 注册完成后由 AMF 主动发起 DL Cooperation
-不新增 AP 层 ACK
 不通过 paging 主动寻找离线 UE
 不支持 HTTPS NAgent baseUri
 ```
