@@ -12,7 +12,7 @@ DL Cooperation message type = 0xe2
 AP Container IEI            = 0x71
 ```
 
-当前流程由 UE 发起。UE 注册完成后发送受 NAS 安全保护的 UL Cooperation，AMF 解密、解析和处理各个 IE；需要响应时，AMF 通过 NGAP DownlinkNASTransport 返回一条或多条 DL Cooperation。默认配置会把重组完成的 AP Payload 解析为 Intent，只将 `intentDescription` 包装成 JSON 请求发送给 NAgent，并把 NAgent JSON 响应原样封装为 `ContainerType=0x0101` 的 DL AP Container；关闭 NAgent 时保留原有的本地直接回显行为。
+当前流程由 UE 发起。UE 注册完成后发送受 NAS 安全保护的 UL Cooperation，AMF 解密、解析和处理各个 IE；需要响应时，AMF 通过 NGAP DownlinkNASTransport 返回一条或多条 DL Cooperation。默认配置会把重组完成的 AP Payload 解析为完整 Intent JSON，并将原始 AP Payload 作为 HTTP body 发送给 NAgent；NAgent JSON 响应原样封装为 `ContainerType=0x0101` 的 DL AP Container。当前完整运行流程见 `docs/ap-intent-nagent-flow.md`。
 
 AMF 不会仅因为 UE 注册完成而主动发送 DL Cooperation。NAgent 路径没有新增 AP 层确认或 AMF paging；HTTP 失败使用本文第 14 节定义的 JSON 错误载荷返回给 UE。
 
@@ -273,9 +273,9 @@ sequenceDiagram
         else AP complete
             GMM->>CTX: Store completed payload
             GMM->>GMM: Strictly decode Intent JSON
-            GMM->>GMM: Build body with intentDescription only
+            GMM->>GMM: Validate full Intent JSON
             GMM->>CTX: Store requestId -> PTI/PayloadId/generation
-            GMM->>NAgent: POST /nagent-intent/v1/intent/{supi}<br/>Body = {intentDescription: ...}
+            GMM->>NAgent: POST /nagent-intent/v1/intent/{supi}<br/>Body = full AP payload
             GMM-->>UE: No DL Cooperation before HTTP completion
             alt Valid response within 3-second total deadline
                 NAgent-->>GMM: 200 application/json
@@ -538,7 +538,7 @@ X-AP-Container-Type: <decimal uint16>
 X-AP-PTI: <decimal uint8>
 X-AP-Payload-ID: <decimal uint16>
 
-{"intentDescription":"<value extracted from the UL Intent>"}
+<exact UL AP Container payload bytes>
 ```
 
 `{supi}` 使用 URL path escaping。UL AP Payload 必须严格符合以下 JSON 结构，所有字段都必须存在，不允许未知字段，`intentPriority` 必须是整数：
@@ -556,11 +556,7 @@ X-AP-Payload-ID: <decimal uint16>
 }
 ```
 
-AMF 不把完整 Intent 转发给 NAgent，而是生成如下请求 body：
-
-```json
-{"intentDescription":"Locate the target UE and return its current cell"}
-```
+AMF 会把完整 UL AP Payload 原样转发给 NAgent。协议约定 Intent 使用 `ContainerType=0x0101`，此时 HTTP body 就是上面的完整 Intent JSON 字节，不再提取并单独包装 `intentDescription`。当前 AMF 实现的 NAgent 入口以“AP payload 是否是完整 Intent JSON”为实际触发条件，并不会在 UL 方向强制拒绝其它 `ContainerType`；但 DL 响应和错误始终使用 `ContainerType=0x0101`。
 
 NAgent 成功响应必须是 `HTTP 200`、`Content-Type: application/json` 且 body 为合法 JSON。第一版 mock 原样返回请求 body，并回显上述 `X-*` 关联头。响应 body 被视为不透明 Agent 结果，不从中读取 PTI，并原样进入 DL AP Payload。为兼容只返回 JSON 的 Agent，响应关联头均为可选；但只要响应携带其中任意一个，HTTP client 就会解析并验证它与原请求一致，不一致时返回 `NAGENT_INVALID_RESPONSE`。
 
@@ -575,7 +571,7 @@ NAgent 成功响应必须是 `HTTP 200`、`Content-Type: application/json` 且 b
 不同 PayloadId -> 可以并行，响应允许乱序完成
 ```
 
-HTTP `Idempotency-Key` 由协议版本、SUPI、消息 metadata 和提取后的 HTTP body SHA-256 确定。一次请求的所有重试使用同一个 key，并将相同值放入 `X-NAgent-Request-ID`。AP 事务显式保存该 Request ID、原 UL PTI、PayloadId 和 generation；HTTP callback 必须匹配保存的 Request ID，随后从事务取回 PTI。PTI 不是全局唯一值，不能单独作为并发事务键，也不从 Agent 响应 body 中解析。
+HTTP `Idempotency-Key` 由协议版本、SUPI、消息 metadata 和完整 HTTP body SHA-256 确定。一次请求的所有重试使用同一个 key，并将相同值放入 `X-NAgent-Request-ID`。AP 事务显式保存该 Request ID、原 UL PTI、PayloadId 和 generation；HTTP callback 必须匹配保存的 Request ID，随后从事务取回 PTI。PTI 不是全局唯一值，不能单独作为并发事务键，也不从 Agent 响应 body 中解析。
 
 ### 14.4 异步处理与 DL 字段
 
@@ -713,28 +709,28 @@ go test -race ./internal/context ./internal/gmm ./internal/gmm/message ./interna
 
 NGAP 测试通过 `httptest` 监听本地端口，受限 sandbox 中可能需要开放 listen 权限。
 
-## 16. 移植检查表
+## 16. 移植任务列表
 
 ```text
-[ ] 注册 NAS message type 0xe1/0xe2，并接入 plain encode/decode
-[ ] 实现 ULCooperation、DLCooperation 和通用 CooperationIE
-[ ] 保留需要的外层一字节/二字节 length 规则
-[ ] 实现严格的 10 字节 AP Container codec
-[ ] 删除旧 4-byte ContainerContent 的访问与兼容路径
-[ ] 在 AmfUe 上增加有锁的 AP reassembly/completed 状态
-[ ] UE 删除时停止 timer 并清理状态
-[ ] 实现乱序、重复、重叠、末片和 gap 检查
-[ ] 实现并发数、片数、载荷长度、completed 数和超时限制
-[ ] 让 0x10/0x18 独立于 0x71 处理
-[ ] completed AP 不写入 NegotiatedIEs[0x71]
-[ ] 按 DF 和 245 字节规则生成 DL AP fragments
-[ ] 每条 Cooperation 最多一个 0x71
-[ ] 多个 DL fragments 分成多条 DL Cooperation 发送
-[ ] 接入 NAS security 和 NGAP DownlinkNASTransport
-[ ] 增加 NAgent 配置、严格 JSON HTTP client、重试和幂等 key
-[ ] 增加每 UE intent 状态、HTTP dispatcher、UE worker callback 和离线 TTL
-[ ] 提供 mock NAgent，并验证 HTTP 回显到 DL AP 再分片
-[ ] 增加 codec、重组、GMM、NGAP 和 race tests
+1. 注册 NAS message type 0xe1/0xe2，并接入 plain encode/decode
+2. 实现 ULCooperation、DLCooperation 和通用 CooperationIE
+3. 保留需要的外层一字节/二字节 length 规则
+4. 实现严格的 10 字节 AP Container codec
+5. 删除旧 4-byte ContainerContent 的访问与兼容路径
+6. 在 AmfUe 上增加有锁的 AP reassembly/completed 状态
+7. UE 删除时停止 timer 并清理状态
+8. 实现乱序、重复、重叠、末片和 gap 检查
+9. 实现并发数、片数、载荷长度、completed 数和超时限制
+10. 让 0x10/0x18 独立于 0x71 处理
+11. completed AP 不写入 NegotiatedIEs[0x71]
+12. 按 DF 和 245 字节规则生成 DL AP fragments
+13. 每条 Cooperation 最多一个 0x71
+14. 多个 DL fragments 分成多条 DL Cooperation 发送
+15. 接入 NAS security 和 NGAP DownlinkNASTransport
+16. 增加 NAgent 配置、严格 JSON HTTP client、重试和幂等 key
+17. 增加每 UE intent 状态、HTTP dispatcher、UE worker callback 和离线 TTL
+18. 提供 mock NAgent，并验证 HTTP 回显到 DL AP 再分片
+19. 增加 codec、重组、GMM、NGAP 和 race tests
 ```
 
 ## 17. 常见问题

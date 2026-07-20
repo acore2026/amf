@@ -1,10 +1,12 @@
 # Cooperation TLV Design
 
+> Historical note: this was the initial TLV design. The current implementation keeps the independent IE list, but it does not use one-byte lengths for every Cooperation message. `MessageIdentity == 0x01` uses a one-byte IE length, while other identities keep a two-byte legacy outer IE length. Current AP Container and NAgent behavior is documented in `docs/ap-intent-nagent-flow.md` and `docs/cooperation-porting-guide.md`.
+
 ## Context
 
 The current AMF implementation treats `ULCooperation` and `DLCooperation` as local NAS extensions with message types `0xe1` and `0xe2`. The existing code models the payload primarily as an AP container IE with IEI `0x71` and a two-byte length.
 
-The desired protocol is different: each information element after `MessageIdentity` is an independent TLV, multiple TLVs may appear in one Cooperation message, and all Cooperation IE lengths are one byte.
+The original desired protocol was different: each information element after `MessageIdentity` is an independent TLV, multiple TLVs may appear in one Cooperation message, and all Cooperation IE lengths are one byte.
 
 This design replaces the single-container payload model with a generic TLV model.
 
@@ -19,7 +21,7 @@ MessageType                          1 byte
 MessageIdentity                      1 byte
 ```
 
-The message body is zero or more independent TLVs:
+The historical one-byte-length body was zero or more independent TLVs:
 
 ```text
 IEI                                  1 byte
@@ -225,7 +227,7 @@ The new desired layout is:
 
 where `02` is a one-byte length.
 
-This design does not preserve the old two-byte length AP container behavior by default. If legacy compatibility becomes necessary, it should be gated explicitly by `MessageIdentity` or a separate version marker rather than inferred heuristically.
+The current implementation did keep the two-byte outer IE length for `MessageIdentity != 0x01`, gated explicitly by `MessageIdentity`. Both outer-length variants still carry the same new AP Container internal structure.
 
 Recommended versioning policy:
 
