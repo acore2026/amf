@@ -18,6 +18,21 @@ import (
 	"github.com/acore2026/util/fsm"
 )
 
+func handleServiceRequestOutcome(
+	ue *context.AmfUe,
+	accessType models.AccessType,
+	outcome ServiceRequestOutcome,
+	err error,
+) {
+	if err != nil {
+		logger.GmmLog.Errorln(err)
+		return
+	}
+	if outcome == ServiceRequestAccepted {
+		sendPendingAPIntentResponses(ue, accessType, false)
+	}
+}
+
 func DeRegistered(state *fsm.State, event fsm.EventType, args fsm.ArgsType) {
 	switch event {
 	case fsm.EntryEvent:
@@ -46,9 +61,8 @@ func DeRegistered(state *fsm.State, event fsm.EventType, args fsm.ArgsType) {
 			}
 		// If UE that considers itself Registared and CM-IDLE throws a ServiceRequest
 		case nas.MsgTypeServiceRequest:
-			if err := HandleServiceRequest(amfUe, accessType, gmmMessage.ServiceRequest); err != nil {
-				logger.GmmLog.Errorln(err)
-			}
+			outcome, err := HandleServiceRequest(amfUe, accessType, gmmMessage.ServiceRequest)
+			handleServiceRequestOutcome(amfUe, accessType, outcome, err)
 		default:
 			amfUe.GmmLog.Errorf("state mismatch: receieve gmm message[message type 0x%0x] at %s state",
 				gmmMessage.GetMessageType(), state.Current())
@@ -75,7 +89,7 @@ func Registered(state *fsm.State, event fsm.EventType, args fsm.ArgsType) {
 		// If we have a radio connection, and we enter the registered state, then we increase the gauge
 		if amfUe.CmConnect(accessType) {
 			business_metrics.IncrUeConnectivityGauge(accessType)
-			sendPendingAPIntentResponses(amfUe, accessType)
+			sendPendingAPIntentResponses(amfUe, accessType, true)
 		}
 
 	case GmmMessageEvent:
@@ -111,11 +125,8 @@ func Registered(state *fsm.State, event fsm.EventType, args fsm.ArgsType) {
 				logger.GmmLog.Errorln(err)
 			}
 		case nas.MsgTypeServiceRequest:
-			if err := HandleServiceRequest(amfUe, accessType, gmmMessage.ServiceRequest); err != nil {
-				logger.GmmLog.Errorln(err)
-			} else {
-				sendPendingAPIntentResponses(amfUe, accessType)
-			}
+			outcome, err := HandleServiceRequest(amfUe, accessType, gmmMessage.ServiceRequest)
+			handleServiceRequestOutcome(amfUe, accessType, outcome, err)
 		case nas.MsgTypeNotificationResponse:
 			if err := HandleNotificationResponse(amfUe, gmmMessage.NotificationResponse); err != nil {
 				logger.GmmLog.Errorln(err)
@@ -242,10 +253,10 @@ func Authentication(state *fsm.State, event fsm.EventType, args fsm.ArgsType) {
 		logger.GmmLog.Warnln("Reject authentication")
 		amfUe := args[ArgAmfUe].(*context.AmfUe)
 		accessType = args[ArgAccessType].(models.AccessType)
-		if amfUe.RanUe[accessType] != nil {
-			ngap_message.SendUEContextReleaseCommand(amfUe.RanUe[accessType], context.UeContextN2NormalRelease,
+		if ranUe := amfUe.RanUeForAccessType(accessType); ranUe != nil {
+			ngap_message.SendUEContextReleaseCommand(ranUe, context.UeContextN2NormalRelease,
 				ngapType.CausePresentNas, ngapType.CauseNasPresentAuthenticationFailure)
-			err := amfUe.RanUe[accessType].Remove()
+			err := ranUe.Remove()
 			if err != nil {
 				logger.GmmLog.Errorln(err)
 			}
@@ -292,7 +303,7 @@ func SecurityMode(state *fsm.State, event fsm.EventType, args fsm.ArgsType) {
 			if err := amfUe.SelectSecurityAlg(amfSelf.SecurityAlgorithm.IntegrityOrder,
 				amfSelf.SecurityAlgorithm.CipheringOrder); err != nil {
 				amfUe.GmmLog.Errorf("Select security algorithm failed: %s", err)
-				gmm_message.SendRegistrationReject(amfUe.RanUe[accessType], nasMessage.Cause5GMMUESecurityCapabilitiesMismatch, "")
+				gmm_message.SendRegistrationReject(amfUe.RanUeForAccessType(accessType), nasMessage.Cause5GMMUESecurityCapabilitiesMismatch, "")
 				err = GmmFSM.SendEvent(state, SecurityModeFailEvent, fsm.ArgsType{
 					ArgAmfUe:      amfUe,
 					ArgAccessType: accessType,
@@ -304,7 +315,7 @@ func SecurityMode(state *fsm.State, event fsm.EventType, args fsm.ArgsType) {
 			}
 			// Generate KnasEnc, KnasInt
 			amfUe.DerivateAlgKey()
-			gmm_message.SendSecurityModeCommand(amfUe.RanUe[accessType], accessType, eapSuccess, eapMessage)
+			gmm_message.SendSecurityModeCommand(amfUe.RanUeForAccessType(accessType), accessType, eapSuccess, eapMessage)
 		}
 	case GmmMessageEvent:
 		amfUe := args[ArgAmfUe].(*context.AmfUe)
@@ -389,9 +400,8 @@ func ContextSetup(state *fsm.State, event fsm.EventType, args fsm.ArgsType) {
 				}
 			}
 		case *nasMessage.ServiceRequest:
-			if err := HandleServiceRequest(amfUe, accessType, message); err != nil {
-				logger.GmmLog.Errorln(err)
-			}
+			outcome, err := HandleServiceRequest(amfUe, accessType, message)
+			handleServiceRequestOutcome(amfUe, accessType, outcome, err)
 		default:
 			logger.GmmLog.Errorf("UE state mismatch: receieve wrong gmm message")
 		}

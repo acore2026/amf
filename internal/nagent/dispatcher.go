@@ -94,6 +94,9 @@ func (d *Dispatcher) runWorker() {
 }
 
 func (d *Dispatcher) execute(job Job) {
+	if d.ctx.Err() != nil {
+		return
+	}
 	jobCtx := job.Context
 	if jobCtx == nil {
 		jobCtx = context.Background()
@@ -103,6 +106,9 @@ func (d *Dispatcher) execute(job Job) {
 	response, err := d.client.SubmitIntent(ctx, job.Request)
 	stopParentCancel()
 	cancel()
+	if d.ctx.Err() != nil {
+		return
+	}
 	if job.Callback != nil {
 		job.Callback(Result{
 			Request:  job.Request,

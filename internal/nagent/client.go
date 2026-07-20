@@ -28,6 +28,13 @@ const (
 	ErrorCodeRejected         = "NAGENT_REJECTED"
 	ErrorCodeInvalidResponse  = "NAGENT_INVALID_RESPONSE"
 	ErrorCodeResponseTooLarge = "NAGENT_RESPONSE_TOO_LARGE"
+
+	HeaderRequestID       = "X-NAgent-Request-ID"
+	HeaderAccessType      = "X-AP-Access-Type"
+	HeaderMessageIdentity = "X-AP-Message-Identity"
+	HeaderContainerType   = "X-AP-Container-Type"
+	HeaderPTI             = "X-AP-PTI"
+	HeaderPayloadID       = "X-AP-Payload-ID"
 )
 
 type IntentRequest struct {
@@ -162,6 +169,12 @@ func (c *Client) submitAttempt(ctx context.Context, request IntentRequest, key s
 	httpRequest.Header.Set("Content-Type", "application/json")
 	httpRequest.Header.Set("Accept", "application/json")
 	httpRequest.Header.Set("Idempotency-Key", key)
+	httpRequest.Header.Set(HeaderRequestID, key)
+	httpRequest.Header.Set(HeaderAccessType, request.AccessType)
+	httpRequest.Header.Set(HeaderMessageIdentity, strconv.FormatUint(uint64(request.MessageIdentity), 10))
+	httpRequest.Header.Set(HeaderContainerType, strconv.FormatUint(uint64(request.ContainerType), 10))
+	httpRequest.Header.Set(HeaderPTI, strconv.FormatUint(uint64(request.PTI), 10))
+	httpRequest.Header.Set(HeaderPayloadID, strconv.FormatUint(uint64(request.PayloadID), 10))
 
 	response, err := c.httpClient.Do(httpRequest)
 	if err != nil {
@@ -195,7 +208,40 @@ func (c *Client) submitAttempt(ctx context.Context, request IntentRequest, key s
 	if !json.Valid(body) {
 		return nil, &Error{Code: ErrorCodeInvalidResponse}
 	}
+	if err := validateResponseCorrelation(response.Header, request, key); err != nil {
+		return nil, &Error{Code: ErrorCodeInvalidResponse, Cause: err}
+	}
 	return body, nil
+}
+
+func validateResponseCorrelation(header http.Header, request IntentRequest, requestID string) error {
+	if got := header.Get(HeaderRequestID); got != "" && got != requestID {
+		return fmt.Errorf("response request ID does not match request")
+	}
+	checks := []struct {
+		name string
+		bits int
+		want uint64
+	}{
+		{name: HeaderMessageIdentity, bits: 8, want: uint64(request.MessageIdentity)},
+		{name: HeaderContainerType, bits: 16, want: uint64(request.ContainerType)},
+		{name: HeaderPTI, bits: 8, want: uint64(request.PTI)},
+		{name: HeaderPayloadID, bits: 16, want: uint64(request.PayloadID)},
+	}
+	for _, check := range checks {
+		value := header.Get(check.name)
+		if value == "" {
+			continue
+		}
+		got, err := strconv.ParseUint(value, 10, check.bits)
+		if err != nil || got != check.want {
+			return fmt.Errorf("response %s does not match request", check.name)
+		}
+	}
+	if got := header.Get(HeaderAccessType); got != "" && got != request.AccessType {
+		return fmt.Errorf("response %s does not match request", HeaderAccessType)
+	}
+	return nil
 }
 
 func IdempotencyKey(request IntentRequest) string {

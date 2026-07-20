@@ -33,6 +33,11 @@ type APContainerFragment struct {
 	Payload       []byte
 }
 
+type DLCooperationIE struct {
+	IEI      uint8
+	Contents []byte
+}
+
 func (f APContainerFragment) Equal(other APContainerFragment) bool {
 	return f.Offset == other.Offset &&
 		f.MoreFragments == other.MoreFragments &&
@@ -45,6 +50,7 @@ type APContainerReassemblyState struct {
 	DontFragment      bool
 	MessageIdentity   uint8
 	AccessType        models.AccessType
+	PendingDLIEs      []DLCooperationIE
 	Fragments         map[uint16]APContainerFragment
 	FinalLength       *uint32
 	DistinctFragments int
@@ -66,6 +72,7 @@ type APContainerState struct {
 	Reassemblies         map[APContainerReassemblyKey]*APContainerReassemblyState
 	Completed            map[uint16]CompletedAPContainer
 	IntentTransactions   map[uint16]*APIntentTransaction
+	IntentDLDeliveries   map[[32]byte]APIntentDLDeliveryRef
 	NextGeneration       uint64
 	NextIntentGeneration uint64
 }
@@ -78,43 +85,52 @@ func NewCooperationContext() *CooperationContext {
 			Reassemblies:       make(map[APContainerReassemblyKey]*APContainerReassemblyState),
 			Completed:          make(map[uint16]CompletedAPContainer),
 			IntentTransactions: make(map[uint16]*APIntentTransaction),
+			IntentDLDeliveries: make(map[[32]byte]APIntentDLDeliveryRef),
 		},
 	}
 }
 
 func (ue *AmfUe) GetOrCreateCooperationContext() *CooperationContext {
 	ue.Lock.Lock()
-	defer ue.Lock.Unlock()
-
 	if ue.CooperationContext == nil {
 		ue.CooperationContext = NewCooperationContext()
+		ue.Lock.Unlock()
 		return ue.CooperationContext
 	}
-	if ue.CooperationContext.LastULIEs == nil {
-		ue.CooperationContext.LastULIEs = make(map[uint8][][]byte)
+	cooperationContext := ue.CooperationContext
+	ue.Lock.Unlock()
+
+	cooperationContext.Mu.Lock()
+	defer cooperationContext.Mu.Unlock()
+	if cooperationContext.LastULIEs == nil {
+		cooperationContext.LastULIEs = make(map[uint8][][]byte)
 	}
-	if ue.CooperationContext.NegotiatedIEs == nil {
-		ue.CooperationContext.NegotiatedIEs = make(map[uint8][]byte)
+	if cooperationContext.NegotiatedIEs == nil {
+		cooperationContext.NegotiatedIEs = make(map[uint8][]byte)
 	}
-	if ue.CooperationContext.APContainer == nil {
-		ue.CooperationContext.APContainer = &APContainerState{
+	if cooperationContext.APContainer == nil {
+		cooperationContext.APContainer = &APContainerState{
 			Reassemblies:       make(map[APContainerReassemblyKey]*APContainerReassemblyState),
 			Completed:          make(map[uint16]CompletedAPContainer),
 			IntentTransactions: make(map[uint16]*APIntentTransaction),
+			IntentDLDeliveries: make(map[[32]byte]APIntentDLDeliveryRef),
 		}
 	} else {
-		if ue.CooperationContext.APContainer.Reassemblies == nil {
-			ue.CooperationContext.APContainer.Reassemblies =
+		if cooperationContext.APContainer.Reassemblies == nil {
+			cooperationContext.APContainer.Reassemblies =
 				make(map[APContainerReassemblyKey]*APContainerReassemblyState)
 		}
-		if ue.CooperationContext.APContainer.Completed == nil {
-			ue.CooperationContext.APContainer.Completed = make(map[uint16]CompletedAPContainer)
+		if cooperationContext.APContainer.Completed == nil {
+			cooperationContext.APContainer.Completed = make(map[uint16]CompletedAPContainer)
 		}
-		if ue.CooperationContext.APContainer.IntentTransactions == nil {
-			ue.CooperationContext.APContainer.IntentTransactions = make(map[uint16]*APIntentTransaction)
+		if cooperationContext.APContainer.IntentTransactions == nil {
+			cooperationContext.APContainer.IntentTransactions = make(map[uint16]*APIntentTransaction)
+		}
+		if cooperationContext.APContainer.IntentDLDeliveries == nil {
+			cooperationContext.APContainer.IntentDLDeliveries = make(map[[32]byte]APIntentDLDeliveryRef)
 		}
 	}
-	return ue.CooperationContext
+	return cooperationContext
 }
 
 func (c *CooperationContext) StoreCompletedAPContainer(record CompletedAPContainer) {
@@ -171,12 +187,6 @@ func (ue *AmfUe) StopAPContainerReassemblyTimers() {
 		delete(state.Reassemblies, key)
 	}
 	for payloadID, transaction := range state.IntentTransactions {
-		if transaction.Cancel != nil {
-			transaction.Cancel()
-		}
-		if transaction.Timer != nil {
-			transaction.Timer.Stop()
-		}
-		delete(state.IntentTransactions, payloadID)
+		removeAPIntentLocked(state, payloadID, transaction.Generation)
 	}
 }

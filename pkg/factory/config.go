@@ -6,6 +6,7 @@ package factory
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -51,13 +52,15 @@ const (
 	nagentDefaultBaseURI         = "http://127.0.0.1:8088"
 	nagentDefaultConnectMs       = 1000
 	nagentDefaultAttemptMs       = 2000
-	nagentDefaultTotalMs         = 5000
+	nagentDefaultTotalMs         = 3000
 	nagentDefaultMaxAttempts     = 3
 	nagentDefaultMaxPayload      = 65535
 	nagentDefaultMaxInFlight     = 64
 	nagentDefaultMaxPerUE        = 8
 	nagentDefaultQueueSize       = 256
 	nagentDefaultPendingTTL      = 60
+	nagentDefaultMockListen      = "127.0.0.1:8088"
+	nagentDefaultMockStatus      = 200
 )
 
 type Config struct {
@@ -400,17 +403,25 @@ type Sbi struct {
 }
 
 type NAgent struct {
-	Enabled             bool   `yaml:"enabled"`
-	BaseURI             string `yaml:"baseUri,omitempty"`
-	ConnectTimeoutMs    int    `yaml:"connectTimeoutMs,omitempty"`
-	AttemptTimeoutMs    int    `yaml:"attemptTimeoutMs,omitempty"`
-	TotalTimeoutMs      int    `yaml:"totalTimeoutMs,omitempty"`
-	MaxAttempts         int    `yaml:"maxAttempts,omitempty"`
-	MaxPayloadBytes     int    `yaml:"maxPayloadBytes,omitempty"`
-	MaxInFlight         int    `yaml:"maxInFlight,omitempty"`
-	MaxInFlightPerUE    int    `yaml:"maxInFlightPerUe,omitempty"`
-	QueueSize           int    `yaml:"queueSize,omitempty"`
-	PendingDLTTLSeconds int    `yaml:"pendingDlTtlSeconds,omitempty"`
+	Enabled             bool       `yaml:"enabled"`
+	BaseURI             string     `yaml:"baseUri,omitempty"`
+	ConnectTimeoutMs    int        `yaml:"connectTimeoutMs,omitempty"`
+	AttemptTimeoutMs    int        `yaml:"attemptTimeoutMs,omitempty"`
+	TotalTimeoutMs      int        `yaml:"totalTimeoutMs,omitempty"`
+	MaxAttempts         int        `yaml:"maxAttempts,omitempty"`
+	MaxPayloadBytes     int        `yaml:"maxPayloadBytes,omitempty"`
+	MaxInFlight         int        `yaml:"maxInFlight,omitempty"`
+	MaxInFlightPerUE    int        `yaml:"maxInFlightPerUe,omitempty"`
+	QueueSize           int        `yaml:"queueSize,omitempty"`
+	PendingDLTTLSeconds int        `yaml:"pendingDlTtlSeconds,omitempty"`
+	Mock                NAgentMock `yaml:"mock,omitempty"`
+}
+
+type NAgentMock struct {
+	Enabled       bool   `yaml:"enabled"`
+	ListenAddress string `yaml:"listenAddress,omitempty"`
+	DelayMs       int    `yaml:"delayMs,omitempty"`
+	Status        int    `yaml:"status,omitempty"`
 }
 
 func (n *NAgent) validate() (bool, error) {
@@ -432,6 +443,15 @@ func (n *NAgent) validate() (bool, error) {
 		effective.MaxInFlightPerUE <= 0 || effective.MaxInFlightPerUE > 8 ||
 		effective.QueueSize < 0 || effective.PendingDLTTLSeconds <= 0 {
 		return false, fmt.Errorf("invalid NAgent resource limit configuration")
+	}
+	if effective.Mock.Enabled {
+		if _, _, err := net.SplitHostPort(effective.Mock.ListenAddress); err != nil {
+			return false, fmt.Errorf("invalid NAgent mock listenAddress %q: %w",
+				effective.Mock.ListenAddress, err)
+		}
+		if effective.Mock.DelayMs < 0 || effective.Mock.Status < 100 || effective.Mock.Status > 599 {
+			return false, fmt.Errorf("invalid NAgent mock response configuration")
+		}
 	}
 	return true, nil
 }
@@ -471,6 +491,12 @@ func (n *NAgent) withDefaults() NAgent {
 	}
 	if result.PendingDLTTLSeconds == 0 {
 		result.PendingDLTTLSeconds = nagentDefaultPendingTTL
+	}
+	if result.Mock.ListenAddress == "" {
+		result.Mock.ListenAddress = nagentDefaultMockListen
+	}
+	if result.Mock.Status == 0 {
+		result.Mock.Status = nagentDefaultMockStatus
 	}
 	return result
 }

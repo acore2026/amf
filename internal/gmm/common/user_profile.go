@@ -41,13 +41,13 @@ func RemoveAmfUe(ue *context.AmfUe, notifyNF bool) {
 }
 
 func PurgeAmfUeSubscriberData(ue *context.AmfUe) {
-	if ue.RanUe[models.AccessType__3_GPP_ACCESS] != nil {
+	if ue.RanUeForAccessType(models.AccessType__3_GPP_ACCESS) != nil {
 		err := PurgeSubscriberData(ue, models.AccessType__3_GPP_ACCESS)
 		if err != nil {
 			logger.GmmLog.Errorf("Purge subscriber data Error[%v]", err.Error())
 		}
 	}
-	if ue.RanUe[models.AccessType_NON_3_GPP_ACCESS] != nil {
+	if ue.RanUeForAccessType(models.AccessType_NON_3_GPP_ACCESS) != nil {
 		err := PurgeSubscriberData(ue, models.AccessType_NON_3_GPP_ACCESS)
 		if err != nil {
 			logger.GmmLog.Errorf("Purge subscriber data Error[%v]", err.Error())
@@ -56,7 +56,8 @@ func PurgeAmfUeSubscriberData(ue *context.AmfUe) {
 }
 
 func AttachRanUeToAmfUeAndReleaseOldIfAny(amfUe *context.AmfUe, ranUe *context.RanUe) {
-	if oldRanUe := amfUe.RanUe[ranUe.Ran.AnType]; oldRanUe != nil {
+	oldRanUe := amfUe.AttachRanUe(ranUe)
+	if oldRanUe != nil && oldRanUe != ranUe {
 		oldRanUe.Log.Infof("Implicit Deregistration - RanUeNgapID[%d]", oldRanUe.RanUeNgapId)
 		oldRanUe.DetachAmfUe()
 		if amfUe.T3550 != nil {
@@ -66,7 +67,7 @@ func AttachRanUeToAmfUeAndReleaseOldIfAny(amfUe *context.AmfUe, ranUe *context.R
 		causeGroup := ngapType.CausePresentRadioNetwork
 		causeValue := ngapType.CauseRadioNetworkPresentReleaseDueToNgranGeneratedReason
 		ngap_message.SendUEContextReleaseCommand(oldRanUe, context.UeContextReleaseUeContext, causeGroup, causeValue)
-	} else {
+	} else if oldRanUe == nil {
 		// We don't increase in AttachRanUe because we don't want to fidle with the counters in a ngap handover procedure
 		if amfUe.AnTypeFlags[ranUe.Ran.AnType] {
 			business_metrics.DecrUeCmIdleStateGauge(ranUe.Ran.AnType)
@@ -74,12 +75,11 @@ func AttachRanUeToAmfUeAndReleaseOldIfAny(amfUe *context.AmfUe, ranUe *context.R
 		business_metrics.IncrUeCmConnectedStateGauge(ranUe.Ran.AnType)
 		amfUe.AnTypeFlags[ranUe.Ran.AnType] = true
 	}
-
-	amfUe.AttachRanUe(ranUe)
 }
 
 func AttachRanUeToAmfUeAndReleaseOldHandover(amfUe *context.AmfUe, sourceRanUe, targetRanUe *context.RanUe) {
 	logger.GmmLog.Debugln("In AttachRanUeToAmfUeAndReleaseOldHandover")
+	amfUe.AttachRanUe(targetRanUe)
 
 	if sourceRanUe != nil {
 		sourceRanUe.DetachAmfUe()
@@ -94,7 +94,6 @@ func AttachRanUeToAmfUeAndReleaseOldHandover(amfUe *context.AmfUe, sourceRanUe, 
 		// This function will be call only by N2 Handover, so we can assume sourceRanUe will not be nil
 		logger.GmmLog.Errorln("AttachRanUeToAmfUeAndReleaseOldHandover() is called but sourceRanUe is nil")
 	}
-	amfUe.AttachRanUe(targetRanUe)
 }
 
 func ClearHoldingRanUe(ranUe *context.RanUe) {

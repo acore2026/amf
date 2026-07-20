@@ -907,8 +907,8 @@ func BuildInitialContextSetupRequest(
 	}
 
 	var pdu ngapType.NGAPPDU
-	ranUe, ok := amfUe.RanUe[anType]
-	if !ok {
+	ranUe := amfUe.RanUeForAccessType(anType)
+	if ranUe == nil {
 		return nil, fmt.Errorf("ranUe for %s is nil", anType)
 	}
 	amfSelf := context.GetSelf()
@@ -1268,8 +1268,8 @@ func BuildUEContextModificationRequest(
 		return nil, fmt.Errorf("amfUe is nil")
 	}
 
-	ranUe, ok := amfUe.RanUe[anType]
-	if !ok {
+	ranUe := amfUe.RanUeForAccessType(anType)
+	if ranUe == nil {
 		return nil, fmt.Errorf("ranUe for %s is nil", anType)
 	}
 
@@ -2359,6 +2359,10 @@ func BuildPaging(
 func BuildRerouteNasRequest(ue *context.AmfUe, anType models.AccessType, amfUeNgapID *int64,
 	ngapMessage []byte, allowedNSSAI *ngapType.AllowedNSSAI,
 ) ([]byte, error) {
+	ranUe := ue.RanUeForAccessType(anType)
+	if ranUe == nil {
+		return nil, fmt.Errorf("ranUe for %s is nil", anType)
+	}
 	var pdu ngapType.NGAPPDU
 
 	pdu.Present = ngapType.NGAPPDUPresentInitiatingMessage
@@ -2382,7 +2386,7 @@ func BuildRerouteNasRequest(ue *context.AmfUe, anType models.AccessType, amfUeNg
 	ie.Value.RANUENGAPID = new(ngapType.RANUENGAPID)
 
 	rANUENGAPID := ie.Value.RANUENGAPID
-	rANUENGAPID.Value = ue.RanUe[anType].RanUeNgapId
+	rANUENGAPID.Value = ranUe.RanUeNgapId
 
 	rerouteNasRequestIEs.List = append(rerouteNasRequestIEs.List, ie)
 
@@ -2740,8 +2744,8 @@ func BuildTraceStart() ([]byte, error) {
 func BuildDeactivateTrace(amfUe *context.AmfUe, anType models.AccessType) ([]byte, error) {
 	var pdu ngapType.NGAPPDU
 
-	ranUe, ok := amfUe.RanUe[anType]
-	if !ok {
+	ranUe := amfUe.RanUeForAccessType(anType)
+	if ranUe == nil {
 		return nil, fmt.Errorf("ranUe for %s is nil", anType)
 	}
 

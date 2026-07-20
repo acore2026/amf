@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	. "github.com/smartystreets/goconvey/convey"
@@ -65,6 +66,47 @@ func NewAmfRan(conn net.Conn) *amf_context.AmfRan {
 		Log: logger.NgapLog.WithField(logger.FieldRanAddr, "127.0.0.1"),
 	}
 	return &ran
+}
+
+func TestNASNonDeliveryIndicationReturnsMatchedAPIntentToReady(t *testing.T) {
+	accessType := models.AccessType__3_GPP_ACCESS
+	ue := &amf_context.AmfUe{
+		GmmLog: logger.GmmLog,
+	}
+	cooperation := ue.GetOrCreateCooperationContext()
+	request := amf_context.APIntentRequest{
+		PayloadID:       0x1234,
+		AccessType:      accessType,
+		MessageIdentity: 1,
+	}
+	_, transaction := cooperation.BeginAPIntent(request, time.Now())
+	require.True(t, cooperation.CompleteAPIntent(
+		request.PayloadID,
+		transaction.Generation,
+		[]byte(`{"result":"ok"}`),
+		false,
+		time.Now(),
+		time.Minute,
+	))
+	claimed, ok := cooperation.ClaimAPIntentDelivery(request.PayloadID, transaction.Generation)
+	require.True(t, ok)
+	nasPDU := []byte{0x7e, 0x02, 0x01, 0x02, 0x03}
+	require.True(t, cooperation.RecordAPIntentDLNAS(
+		request.PayloadID, transaction.Generation, claimed.DeliveryAttempt, nasPDU,
+	))
+	status, ok := cooperation.FinishAPIntentDeliveryAttempt(
+		request.PayloadID, transaction.Generation, claimed.DeliveryAttempt, true,
+	)
+	require.True(t, ok)
+	require.Equal(t, amf_context.APIntentSent, status)
+
+	ran := &amf_context.AmfRan{AnType: accessType, Log: logger.NgapLog}
+	ranUe := &amf_context.RanUe{AmfUe: ue, Ran: ran, Log: logger.NgapLog}
+	handleNASNonDeliveryIndicationMain(ran, ranUe, &ngapType.NASPDU{Value: nasPDU}, nil)
+
+	current, ok := cooperation.APIntent(request.PayloadID, transaction.Generation)
+	require.True(t, ok)
+	require.Equal(t, amf_context.APIntentReady, current.Status)
 }
 
 func NewAmfContext(amfCtx *amf_context.AMFContext) {

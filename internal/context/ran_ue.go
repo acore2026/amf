@@ -69,6 +69,10 @@ type RanUe struct {
 
 	/* logger */
 	Log *logrus.Entry
+
+	/* immutable AP delivery snapshot metadata */
+	apDeliverySource     *RanUe
+	apDeliveryGeneration uint64
 }
 
 func (ranUe *RanUe) Remove() error {

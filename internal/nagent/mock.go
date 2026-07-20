@@ -71,6 +71,18 @@ func NewMockHandler(config MockConfig) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
+		for _, name := range []string{
+			HeaderRequestID,
+			HeaderAccessType,
+			HeaderMessageIdentity,
+			HeaderContainerType,
+			HeaderPTI,
+			HeaderPayloadID,
+		} {
+			if value := request.Header.Get(name); value != "" {
+				w.Header().Set(name, value)
+			}
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(body)
 	})

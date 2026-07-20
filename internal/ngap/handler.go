@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/acore2026/amf/internal/context"
+	gmm "github.com/acore2026/amf/internal/gmm"
 	gmm_common "github.com/acore2026/amf/internal/gmm/common"
 	gmm_message "github.com/acore2026/amf/internal/gmm/message"
 	business_metrics "github.com/acore2026/amf/internal/metrics/business"
@@ -1230,6 +1231,7 @@ func handleHandoverNotifyMain(ran *context.AmfRan,
 			utils.SuccessMetric,
 			business_metrics.HANDOVER_EMPTY_CAUSE, targetUe.HandOverStartTime)
 		gmm_common.AttachRanUeToAmfUeAndReleaseOldHandover(amfUe, sourceUe, targetUe)
+		gmm.NotifyAPIntentDeliveryAvailable(amfUe, targetUe.Ran.AnType)
 	}
 
 	// TODO: The UE initiates Mobility Registration Update procedure as described in clause 4.2.2.2.2.
@@ -1368,7 +1370,7 @@ func handlePathSwitchRequestMain(ran *context.AmfRan,
 	// successfully, the AMF shall send an N2 Path Switch Request Failure message to the Target NG-RAN
 	if len(pduSessionResourceSwitchedList.List) > 0 {
 		// TODO: set newSecurityContextIndicator to true if there is a new security context
-		err := ranUe.SwitchToRan(ran, rANUENGAPID.Value)
+		err := amfUe.SwitchRanUeToRan(ranUe, ran, rANUENGAPID.Value)
 		if err != nil {
 			ranUe.Log.Error(err.Error())
 			business_metrics.IncrHoEventCounter(business_metrics.HANDOVER_TYPE_XN_VALUE, utils.FailureMetric,
@@ -1377,6 +1379,7 @@ func handlePathSwitchRequestMain(ran *context.AmfRan,
 		}
 		ngap_message.SendPathSwitchRequestAcknowledge(ranUe, pduSessionResourceSwitchedList,
 			pduSessionResourceReleasedListPSAck, false, nil, nil, nil, xnHandoverStartTime)
+		gmm.NotifyAPIntentDeliveryAvailable(amfUe, ran.AnType)
 	} else if len(pduSessionResourceReleasedListPSFail.List) > 0 {
 		ngap_message.SendPathSwitchRequestFailure(ran, sourceAMFUENGAPID.Value, rANUENGAPID.Value,
 			&pduSessionResourceReleasedListPSFail, nil, business_metrics.HANDOVER_PDU_SESSION_RES_REL_LIST_ERR,
@@ -1767,6 +1770,9 @@ func handleNASNonDeliveryIndicationMain(ran *context.AmfRan,
 	}
 
 	if nASPDU != nil {
+		if gmm.HandleAPIntentNASNonDelivery(ranUe.AmfUe, ran.AnType, nASPDU.Value) {
+			return
+		}
 		amf_nas.HandleNAS(ranUe, ngapType.ProcedureCodeNASNonDeliveryIndication, nASPDU.Value, false)
 	}
 }
@@ -2195,7 +2201,7 @@ func removeRanUeByInvalidId(ran *context.AmfRan, ranUe *context.RanUe, reason st
 
 	ranUe.Log.Errorf("Remove RanUe by %s", reason)
 	amfUe := ranUe.AmfUe
-	if amfUe != nil && amfUe.RanUe[ran.AnType] == ranUe {
+	if amfUe != nil && amfUe.RanUeForAccessType(ran.AnType) == ranUe {
 		if amfUe.T3550 != nil {
 			amfUe.State[ranUe.Ran.AnType].Set(context.Registered)
 		}

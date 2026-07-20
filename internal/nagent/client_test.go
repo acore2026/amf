@@ -17,6 +17,7 @@ import (
 func TestClientSubmitIntentEchoesJSONAndSetsHeaders(t *testing.T) {
 	payload := []byte(`{"intent":"locate","target":"cell-1"}`)
 	var gotKey string
+	gotHeaders := make(http.Header)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s, want POST", r.Method)
@@ -28,6 +29,17 @@ func TestClientSubmitIntentEchoesJSONAndSetsHeaders(t *testing.T) {
 			t.Errorf("Content-Type = %q", got)
 		}
 		gotKey = r.Header.Get("Idempotency-Key")
+		for _, name := range []string{
+			HeaderRequestID,
+			HeaderAccessType,
+			HeaderMessageIdentity,
+			HeaderContainerType,
+			HeaderPTI,
+			HeaderPayloadID,
+		} {
+			gotHeaders.Set(name, r.Header.Get(name))
+			w.Header().Set(name, r.Header.Get(name))
+		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Errorf("ReadAll() error = %v", err)
@@ -57,6 +69,27 @@ func TestClientSubmitIntentEchoesJSONAndSetsHeaders(t *testing.T) {
 	if len(gotKey) != 64 || gotKey != IdempotencyKey(request) {
 		t.Fatalf("Idempotency-Key = %q", gotKey)
 	}
+	if gotHeaders.Get(HeaderRequestID) != gotKey ||
+		gotHeaders.Get(HeaderAccessType) != request.AccessType ||
+		gotHeaders.Get(HeaderMessageIdentity) != "1" ||
+		gotHeaders.Get(HeaderContainerType) != "256" ||
+		gotHeaders.Get(HeaderPTI) != "5" ||
+		gotHeaders.Get(HeaderPayloadID) != "4660" {
+		t.Fatalf("correlation headers = %#v", gotHeaders)
+	}
+}
+
+func TestClientRejectsMismatchedResponseCorrelation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(HeaderRequestID, r.Header.Get(HeaderRequestID))
+		w.Header().Set(HeaderPTI, "6")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(server.URL).SubmitIntent(context.Background(), validIntentRequest())
+	assertIntentError(t, err, ErrorCodeInvalidResponse, false)
 }
 
 func TestIdempotencyKeyCoversIntentMetadata(t *testing.T) {

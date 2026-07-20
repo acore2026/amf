@@ -3,6 +3,7 @@ package gmm
 import (
 	"bytes"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -155,6 +156,36 @@ func TestProcessULCooperationDoesNotEmitDL18(t *testing.T) {
 	}
 	if len(dlMessages) != 0 {
 		t.Fatalf("DL message count = %d, want 0", len(dlMessages))
+	}
+}
+
+func TestProcessULCooperationStateSupportsConcurrentAccesses(t *testing.T) {
+	ue := &context.AmfUe{}
+	const messages = 100
+	errCh := make(chan error, messages)
+	var wg sync.WaitGroup
+	for i := 0; i < messages; i++ {
+		wg.Add(1)
+		go func(value byte) {
+			defer wg.Done()
+			ul := nasMessage.NewULCooperation(nas.MsgTypeULCooperation)
+			ul.MessageIdentity = value
+			ie, err := nasMessage.NewCooperationIE(0x10, []byte{value})
+			if err != nil {
+				errCh <- err
+				return
+			}
+			ul.IEs = append(ul.IEs, ie)
+			_, err = processULCooperationIEs(ue, models.AccessType__3_GPP_ACCESS, ul)
+			errCh <- err
+		}(byte(i))
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("concurrent Cooperation processing failed: %v", err)
+		}
 	}
 }
 

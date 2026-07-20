@@ -429,3 +429,22 @@ func TestScheduler_NonUEMessage(t *testing.T) {
 		"All non-UE messages should be processed")
 	t.Logf("Non-UE messages routed to worker %d", expectedWorkerIndex)
 }
+
+func TestWorkerTrySubmitRejectsFullAndStoppedQueue(t *testing.T) {
+	worker := &Worker{
+		ID:       1,
+		taskChan: make(chan Task, 1),
+		stopChan: make(chan struct{}),
+	}
+	if !worker.TrySubmit(Task{UEID: 10}) {
+		t.Fatal("first TrySubmit() was rejected")
+	}
+	if worker.TrySubmit(Task{UEID: 11}) {
+		t.Fatal("TrySubmit() blocked or accepted a full queue")
+	}
+	worker.Stop()
+	<-worker.taskChan
+	if worker.TrySubmit(Task{UEID: 12}) {
+		t.Fatal("TrySubmit() accepted a stopped worker with queue capacity")
+	}
+}

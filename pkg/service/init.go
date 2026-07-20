@@ -53,6 +53,7 @@ type AmfApp struct {
 	sbiServer        *sbi.Server
 	metricsServer    *metrics.Server
 	nagentDispatcher *nagent.Dispatcher
+	nagentMock       *embeddedNAgentMock
 }
 
 func NewApp(ctx context.Context, cfg *factory.Config, tlsKeyLogPath string) (*AmfApp, error) {
@@ -91,18 +92,45 @@ func NewApp(ctx context.Context, cfg *factory.Config, tlsKeyLogPath string) (*Am
 			return nil, err
 		}
 	}
-	amf.configureNAgent()
+	if err = amf.configureNAgent(); err != nil {
+		amf.cancel()
+		return nil, err
+	}
 
 	AMF = amf
 
 	return amf, nil
 }
 
-func (a *AmfApp) configureNAgent() {
+func (a *AmfApp) configureNAgent() error {
 	nagentConfig := a.cfg.GetNAgentConfig()
 	if !nagentConfig.Enabled {
-		gmm.ConfigureAPIntentIntegration(false, nil, nil, 0, 0)
-		return
+		gmm.ConfigureAPIntentIntegration(false, nil, nil, 0, 0, 0)
+		return nil
+	}
+	if nagentConfig.Mock.Enabled {
+		mock, err := newEmbeddedNAgentMock(
+			nagentConfig.Mock.ListenAddress,
+			nagent.NewMockHandler(nagent.MockConfig{
+				Delay:           time.Duration(nagentConfig.Mock.DelayMs) * time.Millisecond,
+				Status:          nagentConfig.Mock.Status,
+				MaxPayloadBytes: nagentConfig.MaxPayloadBytes,
+				Logf:            logger.InitLog.Infof,
+			}),
+		)
+		if err != nil {
+			return err
+		}
+		a.nagentMock = mock
+		logger.InitLog.Infof("Embedded NAgent mock listening on %s", mock.Address())
+		a.wg.Add(1)
+		go func() {
+			defer a.wg.Done()
+			if err := mock.Serve(); err != nil {
+				logger.InitLog.Errorf("Embedded NAgent mock stopped unexpectedly: %v", err)
+				a.cancel()
+			}
+		}()
 	}
 	client := nagent.NewClient(nagent.ClientConfig{
 		BaseURI:         nagentConfig.BaseURI,
@@ -120,9 +148,11 @@ func (a *AmfApp) configureNAgent() {
 		true,
 		a.nagentDispatcher,
 		ngap.DispatchUECallback,
+		time.Duration(nagentConfig.TotalTimeoutMs)*time.Millisecond,
 		time.Duration(nagentConfig.PendingDLTTLSeconds)*time.Second,
 		nagentConfig.MaxInFlightPerUE,
 	)
+	return nil
 }
 
 func getCustomMetrics(cfg *factory.Config) map[utils.MetricTypeEnabled][]prometheus.Collector {
@@ -307,6 +337,13 @@ func (a *AmfApp) listenShutdownEvent() {
 }
 
 func (a *AmfApp) CallServerStop() {
+	if a.nagentMock != nil {
+		shutdownContext, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if err := a.nagentMock.Shutdown(shutdownContext); err != nil {
+			logger.MainLog.Errorf("Stop embedded NAgent mock failed: %v", err)
+		}
+		cancel()
+	}
 	if a.sbiServer != nil {
 		a.sbiServer.Stop()
 	}
@@ -322,10 +359,10 @@ func (a *AmfApp) WaitRoutineStopped() {
 
 func (a *AmfApp) terminateProcedure() {
 	logger.MainLog.Infof("Terminating AMF...")
+	gmm.ConfigureAPIntentIntegration(false, nil, nil, 0, 0, 0)
 	if a.nagentDispatcher != nil {
 		a.nagentDispatcher.Stop()
 	}
-	gmm.ConfigureAPIntentIntegration(false, nil, nil, 0, 0)
 	a.CallServerStop()
 	// deregister with NRF
 	problemDetails, err_deg := a.Consumer().SendDeregisterNFInstance()

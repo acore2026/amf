@@ -19,6 +19,10 @@ func Encode(ue *context.AmfUe, msg *nas.Message, accessType models.AccessType) (
 	if msg == nil {
 		return nil, fmt.Errorf("NAS Message is nil")
 	}
+	if ue != nil {
+		ue.LockNASDownlinkSecurity()
+		defer ue.UnlockNASDownlinkSecurity()
+	}
 
 	// Plain NAS message
 	if ue == nil || !ue.SecurityContextAvailable {
@@ -234,30 +238,30 @@ func Decode(ue *context.AmfUe, accessType models.AccessType, payload []byte,
 	// Special handling for EPD=0x7f or EPD=0x7e (ULCooperation message)
 	// This is an extended protocol discriminator for custom NAS messages
 	// May have additional header that needs to be skipped
-	
+
 	// Try to find ULCooperation message by searching for MsgTypeULCooperation (0xe1)
 	ulCooperationFound := false
-	
+
 	ue.NASLog.WithFields(logrus.Fields{
 		"payloadLen":  len(payload),
 		"payloadData": fmt.Sprintf("%x", payload[:min(len(payload), 128)]),
 	}).Debugf("[NAS] Searching for ULCooperation message")
-	
+
 	// Search for ULCooperation pattern: EPD (0x7f or 0x7e), SecurityHeader, MsgType(0xe1)
 	for i := 0; i <= len(payload)-3; i++ {
 		// Check if this position has ULCooperation message pattern
 		if (payload[i] == 0x7f || payload[i] == 0x7e) && payload[i+2] == nas.MsgTypeULCooperation {
 			ulCooperationFound = true
-			
+
 			ue.NASLog.WithFields(logrus.Fields{
-				"offset":          i,
-				"epd":             fmt.Sprintf("0x%02x", payload[i]),
-				"securityHeader":  fmt.Sprintf("0x%02x", payload[i+1]),
-				"msgType":         fmt.Sprintf("0x%02x", payload[i+2]),
-				"skippedBytes":    i,
-				"skippedData":     fmt.Sprintf("%x", payload[:i]),
+				"offset":         i,
+				"epd":            fmt.Sprintf("0x%02x", payload[i]),
+				"securityHeader": fmt.Sprintf("0x%02x", payload[i+1]),
+				"msgType":        fmt.Sprintf("0x%02x", payload[i+2]),
+				"skippedBytes":   i,
+				"skippedData":    fmt.Sprintf("%x", payload[:i]),
 			}).Infof("[ULCooperation] Found message at offset %d, skipping %d bytes of header", i, i)
-			
+
 			// Skip the extra header
 			if i > 0 {
 				payload = payload[i:]
@@ -269,7 +273,7 @@ func Decode(ue *context.AmfUe, accessType models.AccessType, payload []byte,
 			break
 		}
 	}
-	
+
 	if ulCooperationFound {
 		ue.NASLog.WithFields(logrus.Fields{
 			"payloadLen":     len(payload),
@@ -288,23 +292,23 @@ func Decode(ue *context.AmfUe, accessType models.AccessType, payload []byte,
 			}).Errorf("ULCooperation V2 decode error: %+v", err)
 			return nil, false, fmt.Errorf("ULCooperation V2 decode error: %+v", err)
 		}
-		
+
 		msg.GmmMessage.GmmHeader.SetExtendedProtocolDiscriminator(msg.GmmMessage.ULCooperation.ExtendedProtocolDiscriminator.Octet)
 		msg.GmmMessage.GmmHeader.Octet[1] = msg.GmmMessage.ULCooperation.SpareHalfOctetAndSecurityHeaderType.Octet
 		msg.GmmMessage.GmmHeader.SetMessageType(msg.GmmMessage.ULCooperation.MessageType)
-		
+
 		ue.NASLog.Infoln("Successfully decoded ULCooperation message")
 	} else {
 		err = msg.PlainNasDecode(&payload)
 		if err != nil {
 			return nil, false, err
 		}
-		
+
 		if msg.GmmMessage != nil && msg.GmmHeader.GetMessageType() == nas.MsgTypeStatus5GMM {
 			ue.NASLog.WithFields(logrus.Fields{
-				"msgType":           "Status5GMM (0x64)",
-				"plainPayloadLen":   len(payload),
-				"plainPayloadHex":   fmt.Sprintf("%x", payload),
+				"msgType":            "Status5GMM (0x64)",
+				"plainPayloadLen":    len(payload),
+				"plainPayloadHex":    fmt.Sprintf("%x", payload),
 				"originalPayloadLen": len(originalPayload),
 				"originalPayloadHex": fmt.Sprintf("%x", originalPayload),
 			}).Infof("[Status5GMM] Full NAS message dump - Original (with security) and Plain (decrypted)")

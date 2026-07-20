@@ -1,6 +1,10 @@
 package factory
 
-import "testing"
+import (
+	"testing"
+
+	"gopkg.in/yaml.v2"
+)
 
 func TestNAgentDefaults(t *testing.T) {
 	cfg := &Config{Configuration: &Configuration{}}
@@ -10,9 +14,11 @@ func TestNAgentDefaults(t *testing.T) {
 		t.Fatal("NAgent should be disabled when configuration is absent")
 	}
 	if got.BaseURI != "http://127.0.0.1:8088" || got.ConnectTimeoutMs != 1000 ||
-		got.AttemptTimeoutMs != 2000 || got.TotalTimeoutMs != 5000 || got.MaxAttempts != 3 ||
+		got.AttemptTimeoutMs != 2000 || got.TotalTimeoutMs != 3000 || got.MaxAttempts != 3 ||
 		got.MaxPayloadBytes != 65535 || got.MaxInFlight != 64 ||
-		got.MaxInFlightPerUE != 8 || got.QueueSize != 256 || got.PendingDLTTLSeconds != 60 {
+		got.MaxInFlightPerUE != 8 || got.QueueSize != 256 || got.PendingDLTTLSeconds != 60 ||
+		got.Mock.Enabled || got.Mock.ListenAddress != "127.0.0.1:8088" ||
+		got.Mock.DelayMs != 0 || got.Mock.Status != 200 {
 		t.Fatalf("unexpected NAgent defaults: %#v", got)
 	}
 }
@@ -54,6 +60,42 @@ func TestNAgentValidate(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "valid embedded mock",
+			config: NAgent{
+				Enabled: true,
+				Mock: NAgentMock{
+					Enabled:       true,
+					ListenAddress: "127.0.0.1:8088",
+					DelayMs:       100,
+					Status:        200,
+				},
+			},
+		},
+		{
+			name: "invalid embedded mock address",
+			config: NAgent{
+				Enabled: true,
+				Mock:    NAgentMock{Enabled: true, ListenAddress: "127.0.0.1"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid embedded mock delay",
+			config: NAgent{
+				Enabled: true,
+				Mock:    NAgentMock{Enabled: true, DelayMs: -1},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid embedded mock status",
+			config: NAgent{
+				Enabled: true,
+				Mock:    NAgentMock{Enabled: true, Status: 700},
+			},
+			wantErr: true,
+		},
+		{
 			name: "missing host",
 			config: NAgent{
 				Enabled: true,
@@ -70,5 +112,30 @@ func TestNAgentValidate(t *testing.T) {
 				t.Fatalf("validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestNAgentEmbeddedMockYAML(t *testing.T) {
+	var parsed struct {
+		NAgent NAgent `yaml:"nagent"`
+	}
+	err := yaml.Unmarshal([]byte(`
+nagent:
+  enabled: true
+  baseUri: http://127.0.0.1:19088
+  mock:
+    enabled: true
+    listenAddress: 127.0.0.1:19088
+    delayMs: 250
+    status: 503
+`), &parsed)
+	if err != nil {
+		t.Fatalf("yaml.Unmarshal() error = %v", err)
+	}
+	got := parsed.NAgent.withDefaults()
+	if !got.Enabled || !got.Mock.Enabled || got.BaseURI != "http://127.0.0.1:19088" ||
+		got.Mock.ListenAddress != "127.0.0.1:19088" || got.Mock.DelayMs != 250 ||
+		got.Mock.Status != 503 {
+		t.Fatalf("decoded NAgent mock configuration = %#v", got)
 	}
 }

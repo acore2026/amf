@@ -54,7 +54,14 @@ func (p *Processor) ProvideLocationInfoProcedure(requestLocInfo models.RequestLo
 
 	provideLocInfo := new(models.ProvideLocInfo)
 
-	ranUe := ue.RanUe[anType]
+	ranUe := ue.RanUeForAccessType(anType)
+	if ranUe == nil {
+		problemDetails := &models.ProblemDetails{
+			Status: http.StatusNotFound,
+			Cause:  "CONTEXT_NOT_FOUND",
+		}
+		return nil, problemDetails
+	}
 	if requestLocInfo.Req5gsLoc || requestLocInfo.ReqCurrentLoc {
 		provideLocInfo.CurrentLoc = true
 		provideLocInfo.Location = &ue.Location

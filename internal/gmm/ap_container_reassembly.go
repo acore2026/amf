@@ -18,8 +18,35 @@ func AddULAPContainerFragment(
 	fragment *nasMessage.APContainer,
 	now time.Time,
 ) (*nasMessage.APContainer, error) {
+	complete, _, err := addULAPContainerFragment(
+		ue, accessType, messageIdentity, fragment, nil, now,
+	)
+	return complete, err
+}
+
+func addULAPContainerFragmentWithPendingDL(
+	ue *context.AmfUe,
+	accessType models.AccessType,
+	messageIdentity uint8,
+	fragment *nasMessage.APContainer,
+	pendingDLIEs []context.DLCooperationIE,
+	now time.Time,
+) (*nasMessage.APContainer, []context.DLCooperationIE, error) {
+	return addULAPContainerFragment(
+		ue, accessType, messageIdentity, fragment, pendingDLIEs, now,
+	)
+}
+
+func addULAPContainerFragment(
+	ue *context.AmfUe,
+	accessType models.AccessType,
+	messageIdentity uint8,
+	fragment *nasMessage.APContainer,
+	pendingDLIEs []context.DLCooperationIE,
+	now time.Time,
+) (*nasMessage.APContainer, []context.DLCooperationIE, error) {
 	if ue == nil || fragment == nil {
-		return nil, fmt.Errorf("UE and AP Container fragment are required")
+		return nil, nil, fmt.Errorf("UE and AP Container fragment are required")
 	}
 	cooperation := ue.GetOrCreateCooperationContext()
 	apState := cooperation.APContainer
@@ -36,7 +63,7 @@ func AddULAPContainerFragment(
 		if countAPContainerReassemblies(
 			apState.Reassemblies, context.APContainerDirectionUL,
 		) >= context.MaxAPContainerReassembliesPerDirection {
-			return nil, fmt.Errorf("UL AP Container reassembly limit reached")
+			return nil, nil, fmt.Errorf("UL AP Container reassembly limit reached")
 		}
 		apState.NextGeneration++
 		state = &context.APContainerReassemblyState{
@@ -57,7 +84,7 @@ func AddULAPContainerFragment(
 	}
 	if err := validateAPContainerMetadata(state, fragment, accessType, messageIdentity); err != nil {
 		clearAPContainerReassemblyLocked(apState, key)
-		return nil, err
+		return nil, nil, err
 	}
 
 	incoming := context.APContainerFragment{
@@ -70,7 +97,7 @@ func AddULAPContainerFragment(
 	}
 	if state.DistinctFragments >= context.MaxAPContainerFragmentsPerPayload {
 		clearAPContainerReassemblyLocked(apState, key)
-		return nil, fmt.Errorf("AP Container payload 0x%04x exceeds fragment limit",
+		return nil, nil, fmt.Errorf("AP Container payload 0x%04x exceeds fragment limit",
 			fragment.ContainerPayloadID)
 	}
 
@@ -81,28 +108,28 @@ func AddULAPContainerFragment(
 		oldEnd := oldStart + len(existing.Payload)
 		if newStart < oldEnd && oldStart < newEnd {
 			clearAPContainerReassemblyLocked(apState, key)
-			return nil, fmt.Errorf("AP Container fragment range [%d,%d) overlaps [%d,%d)",
+			return nil, nil, fmt.Errorf("AP Container fragment range [%d,%d) overlaps [%d,%d)",
 				newStart, newEnd, oldStart, oldEnd)
 		}
 	}
 
 	if state.FinalLength != nil && uint32(newEnd) > *state.FinalLength {
 		clearAPContainerReassemblyLocked(apState, key)
-		return nil, fmt.Errorf("AP Container fragment end %d exceeds final length %d",
+		return nil, nil, fmt.Errorf("AP Container fragment end %d exceeds final length %d",
 			newEnd, *state.FinalLength)
 	}
 	if !incoming.MoreFragments {
 		finalLength := uint32(newEnd)
 		if state.FinalLength != nil && *state.FinalLength != finalLength {
 			clearAPContainerReassemblyLocked(apState, key)
-			return nil, fmt.Errorf("AP Container final length conflict: %d and %d",
+			return nil, nil, fmt.Errorf("AP Container final length conflict: %d and %d",
 				*state.FinalLength, finalLength)
 		}
 		for _, existing := range state.Fragments {
 			existingEnd := uint32(existing.Offset) + uint32(len(existing.Payload))
 			if existingEnd > finalLength {
 				clearAPContainerReassemblyLocked(apState, key)
-				return nil, fmt.Errorf("AP Container existing fragment end %d exceeds final length %d",
+				return nil, nil, fmt.Errorf("AP Container existing fragment end %d exceeds final length %d",
 					existingEnd, finalLength)
 			}
 		}
@@ -111,6 +138,7 @@ func AddULAPContainerFragment(
 
 	state.Fragments[incoming.Offset] = incoming
 	state.DistinctFragments++
+	mergeReassemblyPendingDLIEs(state, pendingDLIEs)
 	return completeAPContainerLocked(apState, key, state)
 }
 
@@ -148,9 +176,9 @@ func completeAPContainerLocked(
 	apState *context.APContainerState,
 	key context.APContainerReassemblyKey,
 	state *context.APContainerReassemblyState,
-) (*nasMessage.APContainer, error) {
+) (*nasMessage.APContainer, []context.DLCooperationIE, error) {
 	if state.FinalLength == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	offsets := make([]int, 0, len(state.Fragments))
 	for offset := range state.Fragments {
@@ -163,13 +191,13 @@ func completeAPContainerLocked(
 	for _, offset := range offsets {
 		fragment := state.Fragments[uint16(offset)]
 		if offset != expected {
-			return nil, nil
+			return nil, nil, nil
 		}
 		payload = append(payload, fragment.Payload...)
 		expected += len(fragment.Payload)
 	}
 	if uint32(expected) != *state.FinalLength {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	complete := &nasMessage.APContainer{
@@ -182,8 +210,48 @@ func completeAPContainerLocked(
 	if state.DontFragment {
 		complete.ContainerFlags = nasMessage.APContainerFlagDF
 	}
+	pendingDLIEs := cloneContextDLCooperationIEs(state.PendingDLIEs)
 	clearAPContainerReassemblyLocked(apState, key)
-	return complete, nil
+	return complete, pendingDLIEs, nil
+}
+
+func mergeReassemblyPendingDLIEs(
+	state *context.APContainerReassemblyState,
+	incoming []context.DLCooperationIE,
+) {
+	for _, candidate := range incoming {
+		replaced := false
+		for index := range state.PendingDLIEs {
+			if state.PendingDLIEs[index].IEI != candidate.IEI {
+				continue
+			}
+			state.PendingDLIEs[index].Contents = append([]byte(nil), candidate.Contents...)
+			replaced = true
+			break
+		}
+		if !replaced {
+			state.PendingDLIEs = append(state.PendingDLIEs, context.DLCooperationIE{
+				IEI:      candidate.IEI,
+				Contents: append([]byte(nil), candidate.Contents...),
+			})
+		}
+	}
+}
+
+func cloneContextDLCooperationIEs(
+	ies []context.DLCooperationIE,
+) []context.DLCooperationIE {
+	if len(ies) == 0 {
+		return nil
+	}
+	result := make([]context.DLCooperationIE, len(ies))
+	for index, ie := range ies {
+		result[index] = context.DLCooperationIE{
+			IEI:      ie.IEI,
+			Contents: append([]byte(nil), ie.Contents...),
+		}
+	}
+	return result
 }
 
 func clearAPContainerReassemblyLocked(

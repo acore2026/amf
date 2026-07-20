@@ -194,6 +194,9 @@ type AmfUe struct {
 	T3512Value             int        // default 54 min
 	Non3gppDeregTimerValue int        // default 54 min
 	Lock                   sync.Mutex // Update context to prevent race condition
+	nasDownlinkSecurityMu  sync.Mutex
+	ranUeMu                sync.RWMutex
+	apDeliveryGeneration   map[models.AccessType]uint64
 
 	// logger
 	NASLog      *logrus.Entry
@@ -204,6 +207,14 @@ type AmfUe struct {
 	GmmStateEnterTime time.Time
 	UeConnected       bool
 	AnTypeFlags       map[models.AccessType]bool
+}
+
+func (ue *AmfUe) LockNASDownlinkSecurity() {
+	ue.nasDownlinkSecurityMu.Lock()
+}
+
+func (ue *AmfUe) UnlockNASDownlinkSecurity() {
+	ue.nasDownlinkSecurityMu.Unlock()
 }
 
 type AmfUeEventSubscription struct {
@@ -220,6 +231,7 @@ type N1N2Message struct {
 }
 
 type CooperationContext struct {
+	Mu                  sync.RWMutex
 	LastMessageIdentity uint8
 	LastULIEs           map[uint8][][]byte
 	NegotiatedIEs       map[uint8][]byte
@@ -308,10 +320,7 @@ func (ue *AmfUe) ServingAMF() *AMFContext {
 }
 
 func (ue *AmfUe) CmConnect(anType models.AccessType) bool {
-	if _, ok := ue.RanUe[anType]; !ok {
-		return false
-	}
-	return true
+	return ue.RanUeForAccessType(anType) != nil
 }
 
 func (ue *AmfUe) CmIdle(anType models.AccessType) bool {
@@ -328,7 +337,7 @@ func (ue *AmfUe) Remove() {
 	ue.StopT3570()
 	ue.StopT3555()
 
-	for _, ranUe := range ue.RanUe {
+	for _, ranUe := range ue.RanUeSnapshot() {
 		if err := ranUe.Remove(); err != nil {
 			logger.CtxLog.Errorf("Remove RanUe error: %v", err)
 		}
@@ -361,15 +370,135 @@ func (ue *AmfUe) DetachRanUe(anType models.AccessType) {
 		business_metrics.DecrUeConnectivityGauge(anType)
 	}
 
+	ue.ranUeMu.Lock()
+	if ranUe := ue.RanUe[anType]; ranUe != nil {
+		ue.advanceAPDeliveryGenerationLocked(anType)
+		if ranUe.AmfUe == ue {
+			ranUe.AmfUe = nil
+		}
+	}
 	delete(ue.RanUe, anType)
+	ue.ranUeMu.Unlock()
 	ue.UpdateLogFields(anType)
 }
 
 // Don't call this function directly. Use gmm_common.AttachRanUeToAmfUeAndReleaseOldIfAny().
-func (ue *AmfUe) AttachRanUe(ranUe *RanUe) {
-	ue.RanUe[ranUe.Ran.AnType] = ranUe
+func (ue *AmfUe) AttachRanUe(ranUe *RanUe) *RanUe {
+	anType := ranUe.Ran.AnType
+	ue.ranUeMu.Lock()
+	oldRanUe := ue.RanUe[anType]
+	if oldRanUe != ranUe || ranUe.AmfUe != ue {
+		ue.advanceAPDeliveryGenerationLocked(anType)
+	}
+	ue.RanUe[anType] = ranUe
 	ranUe.AmfUe = ue
-	ue.UpdateLogFields(ranUe.Ran.AnType)
+	ue.ranUeMu.Unlock()
+	ue.UpdateLogFields(anType)
+	return oldRanUe
+}
+
+// RanUeForAccessType returns the current RAN association for an access type.
+// The association may change after this method returns; callers that require a
+// stable delivery target must use APDeliveryRanUeSnapshot instead.
+func (ue *AmfUe) RanUeForAccessType(anType models.AccessType) *RanUe {
+	if ue == nil {
+		return nil
+	}
+	ue.ranUeMu.RLock()
+	defer ue.ranUeMu.RUnlock()
+	return ue.RanUe[anType]
+}
+
+// RanUeSnapshot returns a shallow snapshot of the current RAN associations.
+func (ue *AmfUe) RanUeSnapshot() map[models.AccessType]*RanUe {
+	if ue == nil {
+		return nil
+	}
+	ue.ranUeMu.RLock()
+	defer ue.ranUeMu.RUnlock()
+	result := make(map[models.AccessType]*RanUe, len(ue.RanUe))
+	for anType, ranUe := range ue.RanUe {
+		result[anType] = ranUe
+	}
+	return result
+}
+
+func (ue *AmfUe) APDeliveryRanUeSnapshot(
+	anType models.AccessType,
+	expected *RanUe,
+) (*RanUe, *RanUe, uint64, bool) {
+	if ue == nil {
+		return nil, nil, 0, false
+	}
+	ue.ranUeMu.RLock()
+	defer ue.ranUeMu.RUnlock()
+	ranUe := ue.RanUe[anType]
+	if ranUe == nil || ranUe.AmfUe != ue || (expected != nil && ranUe != expected) {
+		return nil, nil, 0, false
+	}
+	generation := ue.apDeliveryGeneration[anType]
+	deliveryRanUe := &RanUe{
+		RanUeNgapId:          ranUe.RanUeNgapId,
+		AmfUeNgapId:          ranUe.AmfUeNgapId,
+		AmfUe:                ue,
+		Ran:                  ranUe.Ran,
+		Log:                  ranUe.Log,
+		apDeliverySource:     ranUe,
+		apDeliveryGeneration: generation,
+	}
+	return ranUe, deliveryRanUe, generation, true
+}
+
+func (ue *AmfUe) APDeliveryRanUeSnapshotCurrent(
+	anType models.AccessType,
+	ranUe *RanUe,
+	generation uint64,
+) bool {
+	if ue == nil || ranUe == nil {
+		return false
+	}
+	ue.ranUeMu.RLock()
+	defer ue.ranUeMu.RUnlock()
+	return ue.RanUe[anType] == ranUe && ranUe.AmfUe == ue &&
+		ue.apDeliveryGeneration[anType] == generation
+}
+
+func (ue *AmfUe) APDeliveryTargetCurrent(anType models.AccessType, target *RanUe) bool {
+	if target == nil || target.apDeliverySource == nil {
+		return false
+	}
+	return ue.APDeliveryRanUeSnapshotCurrent(
+		anType, target.apDeliverySource, target.apDeliveryGeneration,
+	)
+}
+
+func (ue *AmfUe) APDeliveryRanUe(anType models.AccessType) *RanUe {
+	ranUe, _, _, _ := ue.APDeliveryRanUeSnapshot(anType, nil)
+	return ranUe
+}
+
+func (ue *AmfUe) SwitchRanUeToRan(ranUe *RanUe, newRan *AmfRan, ranUeNgapID int64) error {
+	if ue == nil {
+		return fmt.Errorf("AmfUe is nil")
+	}
+	ue.ranUeMu.Lock()
+	defer ue.ranUeMu.Unlock()
+	if ranUe == nil || ranUe.Ran == nil || ue.RanUe[ranUe.Ran.AnType] != ranUe || ranUe.AmfUe != ue {
+		return fmt.Errorf("RanUe is not associated with AmfUe")
+	}
+	anType := ranUe.Ran.AnType
+	if err := ranUe.SwitchToRan(newRan, ranUeNgapID); err != nil {
+		return err
+	}
+	ue.advanceAPDeliveryGenerationLocked(anType)
+	return nil
+}
+
+func (ue *AmfUe) advanceAPDeliveryGenerationLocked(anType models.AccessType) {
+	if ue.apDeliveryGeneration == nil {
+		ue.apDeliveryGeneration = make(map[models.AccessType]uint64)
+	}
+	ue.apDeliveryGeneration[anType]++
 }
 
 func (ue *AmfUe) UpdateLogFields(accessType models.AccessType) {
@@ -380,7 +509,7 @@ func (ue *AmfUe) UpdateLogFields(accessType models.AccessType) {
 	case models.AccessType_NON_3_GPP_ACCESS:
 		anTypeStr = "Non3GPP"
 	}
-	if ranUe, ok := ue.RanUe[accessType]; ok {
+	if ranUe := ue.RanUeForAccessType(accessType); ranUe != nil {
 		ue.NASLog = ue.NASLog.WithField(logger.FieldAmfUeNgapID, fmt.Sprintf("RU:%d,AU:%d(%s)",
 			ranUe.RanUeNgapId, ranUe.AmfUeNgapId, anTypeStr))
 		ue.GmmLog = ue.GmmLog.WithField(logger.FieldAmfUeNgapID, fmt.Sprintf("RU:%d,AU:%d(%s)",
@@ -667,7 +796,7 @@ func (ue *AmfUe) ClearRegistrationRequestData(accessType models.AccessType) {
 	ue.IdentityRequestSendTimes = 0
 	ue.ServingAmfChanged = false
 	ue.RegistrationAcceptForNon3GPPAccess = nil
-	if ranUe := ue.RanUe[accessType]; ranUe != nil {
+	if ranUe := ue.RanUeForAccessType(accessType); ranUe != nil {
 		ranUe.UeContextRequest = factory.AmfConfig.Configuration.DefaultUECtxReq
 	}
 	ue.RetransmissionOfInitialNASMsg = false

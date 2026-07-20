@@ -3,7 +3,9 @@ package context
 import (
 	"fmt"
 	"net"
+	"os"
 	"sync"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -34,9 +36,89 @@ type AmfRan struct {
 
 	/* RAN UE List */
 	RanUeList sync.Map // RanUeNgapId as key
+	writeOnce sync.Once
+	writeSlot chan struct{}
 
 	/* logger */
 	Log *logrus.Entry
+}
+
+func (ran *AmfRan) WritePacket(packet []byte, timeout time.Duration) (int, error) {
+	if ran == nil || ran.Conn == nil {
+		return 0, fmt.Errorf("RAN connection is nil")
+	}
+	ran.writeOnce.Do(func() {
+		ran.writeSlot = make(chan struct{}, 1)
+		ran.writeSlot <- struct{}{}
+	})
+
+	if timeout <= 0 {
+		<-ran.writeSlot
+		defer func() { ran.writeSlot <- struct{}{} }()
+		return ran.Conn.Write(packet)
+	}
+
+	deadline := time.Now().Add(timeout)
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-ran.writeSlot:
+	case <-timer.C:
+		return 0, fmt.Errorf("wait for RAN writer: %w", timeoutError(timeout))
+	}
+
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		ran.writeSlot <- struct{}{}
+		return 0, timeoutError(timeout)
+	}
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	timer.Reset(remaining)
+
+	type writeResult struct {
+		n   int
+		err error
+	}
+	resultCh := make(chan writeResult, 1)
+	conn := ran.Conn
+	go func() {
+		result := writeResult{}
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				result.n = 0
+				result.err = fmt.Errorf("RAN connection write panic: %v", recovered)
+			}
+			ran.writeSlot <- struct{}{}
+			resultCh <- result
+		}()
+		deadlineSet := conn.SetWriteDeadline(deadline) == nil
+		result.n, result.err = conn.Write(packet)
+		if deadlineSet {
+			_ = conn.SetWriteDeadline(time.Time{})
+		}
+	}()
+
+	select {
+	case result := <-resultCh:
+		return result.n, result.err
+	case <-timer.C:
+		select {
+		case result := <-resultCh:
+			return result.n, result.err
+		default:
+		}
+		_ = conn.Close()
+		return 0, timeoutError(timeout)
+	}
+}
+
+func timeoutError(timeout time.Duration) error {
+	return fmt.Errorf("RAN write timed out after %s: %w", timeout, os.ErrDeadlineExceeded)
 }
 
 type SupportedTAI struct {

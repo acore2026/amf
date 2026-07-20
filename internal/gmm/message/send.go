@@ -205,7 +205,8 @@ func SendServiceAccept(amfUe *context.AmfUe, anType models.AccessType,
 		additionalCause = nasMetrics.AMF_UE_NIL_ERR
 		return fmt.Errorf("SendServiceAccept: AmfUe is nil")
 	}
-	if amfUe.RanUe[anType] == nil {
+	ranUe := amfUe.RanUeForAccessType(anType)
+	if ranUe == nil {
 		additionalCause = nasMetrics.RAN_UE_NIL_ERR
 		return fmt.Errorf("SendServiceAccept: RanUe is nil")
 	}
@@ -219,8 +220,8 @@ func SendServiceAccept(amfUe *context.AmfUe, anType models.AccessType,
 		return err
 	}
 
-	if amfUe.RanUe[anType].UeContextRequest ||
-		(!amfUe.RanUe[anType].InitialContextSetup && len(cxtList.List) > 0) {
+	if ranUe.UeContextRequest ||
+		(!ranUe.InitialContextSetup && len(cxtList.List) > 0) {
 		// update Kgnb/Kn3iwf
 		amfUe.UpdateSecurityContext(anType)
 	}
@@ -243,7 +244,8 @@ func SendConfigurationUpdateCommand(amfUe *context.AmfUe,
 		logger.GmmLog.Error("SendConfigurationUpdateCommand: AmfUe is nil")
 		return
 	}
-	if amfUe.RanUe[accessType] == nil {
+	ranUe := amfUe.RanUeForAccessType(accessType)
+	if ranUe == nil {
 		additionalCause = nasMetrics.RAN_UE_NIL_ERR
 		logger.GmmLog.Error("SendConfigurationUpdateCommand: RanUe is nil")
 		return
@@ -259,7 +261,7 @@ func SendConfigurationUpdateCommand(amfUe *context.AmfUe,
 
 	mobilityRestrictionList := ngap_message.BuildIEMobilityRestrictionList(amfUe)
 	isNasMsgSent = true
-	ngap_message.SendDownlinkNasTransport(amfUe.RanUe[accessType], nasMsg, &mobilityRestrictionList)
+	ngap_message.SendDownlinkNasTransport(ranUe, nasMsg, &mobilityRestrictionList)
 
 	if startT3555 && context.GetSelf().T3555Cfg.Enable {
 		cfg := context.GetSelf().T3555Cfg
@@ -270,7 +272,7 @@ func SendConfigurationUpdateCommand(amfUe *context.AmfUe,
 			timerAdditionalCause := "Timer expired, retry configuration update command"
 			defer nasMetrics.IncrMetricsSentNasMsgs(
 				nasMetrics.CONFIGURATION_UPDATE_COMMAND_TIMER, &isNasMsgSent, 0, &timerAdditionalCause)
-			ngap_message.SendDownlinkNasTransport(amfUe.RanUe[accessType], nasMsg, &mobilityRestrictionList)
+			ngap_message.SendDownlinkNasTransport(amfUe.RanUeForAccessType(accessType), nasMsg, &mobilityRestrictionList)
 		}, func() {
 			amfUe.GmmLog.Warnf("T3555 Expires %d times, abort configuration update procedure",
 				cfg.MaxRetryTimes)
@@ -480,18 +482,27 @@ func SendSecurityModeCommand(ue *context.RanUe, accessType models.AccessType, ea
 
 func SendDLCooperation(ue *context.RanUe, messageIdentity uint8,
 	ies []*nasMessage.CooperationIE,
-) {
+) error {
+	_, err := SendDLCooperationWithResult(ue, messageIdentity, ies)
+	return err
+}
+
+// SendDLCooperationWithResult returns the exact NAS PDU submitted to NGAP.
+// Success confirms the local SCTP write, not receipt by the UE.
+func SendDLCooperationWithResult(ue *context.RanUe, messageIdentity uint8,
+	ies []*nasMessage.CooperationIE,
+) ([]byte, error) {
 	if ue == nil {
 		logger.GmmLog.Error("SendDLCooperation: RanUe is nil")
-		return
+		return nil, fmt.Errorf("SendDLCooperation: RanUe is nil")
 	}
 	if ue.AmfUe == nil {
 		logger.GmmLog.Error("SendDLCooperation: AmfUe is nil")
-		return
+		return nil, fmt.Errorf("SendDLCooperation: AmfUe is nil")
 	}
 	if ue.Ran == nil {
 		logger.GmmLog.Error("SendDLCooperation: Ran is nil")
-		return
+		return nil, fmt.Errorf("SendDLCooperation: Ran is nil")
 	}
 	amfUe := ue.AmfUe
 	ran := ue.Ran
@@ -505,12 +516,16 @@ func SendDLCooperation(ue *context.RanUe, messageIdentity uint8,
 	nasMsg, err := BuildDLCooperation(amfUe, ran.AnType, messageIdentity, ies)
 	if err != nil {
 		amfUe.GmmLog.Errorf("BuildDLCooperation failed: %v", err)
-		return
+		return nil, fmt.Errorf("build DL Cooperation: %w", err)
 	}
 
 	amfUe.GmmLog.Info("Successfully built DLCooperation, sending via NGAP...")
-	ngap_message.SendDownlinkNasTransport(ue, nasMsg, nil)
+	sent, cause := ngap_message.SendDownlinkNasTransportWithResult(ue, nasMsg, nil)
+	if !sent {
+		return nil, fmt.Errorf("send DL Cooperation via NGAP: %s", cause)
+	}
 	amfUe.GmmLog.Info("DLCooperation sent successfully")
+	return append([]byte(nil), nasMsg...), nil
 }
 
 func SendDeregistrationRequest(ue *context.RanUe, accessType uint8, reRegistrationRequired bool, cause5GMM uint8) {
@@ -610,7 +625,7 @@ func SendRegistrationAccept(
 		logger.GmmLog.Error("SendRegistrationAccept: AmfUe is nil")
 		return
 	}
-	if amfUe.RanUe[anType] == nil {
+	if amfUe.RanUeForAccessType(anType) == nil {
 		additionalCause = nasMetrics.RAN_UE_NIL_ERR
 		logger.GmmLog.Error("SendRegistrationAccept: RanUe is nil")
 		return
@@ -639,7 +654,7 @@ func SendRegistrationAccept(
 		cfg := context.GetSelf().T3550Cfg
 		amfUe.GmmLog.Infof("Start T3550 timer")
 		amfUe.T3550 = context.NewTimer(cfg.ExpireTime, cfg.MaxRetryTimes, func(expireTimes int32) {
-			if amfUe.RanUe[anType] == nil {
+			if amfUe.RanUeForAccessType(anType) == nil {
 				amfUe.GmmLog.Warnf("[NAS] UE Context released, abort retransmission of Registration Accept")
 				amfUe.T3550 = nil
 			} else {

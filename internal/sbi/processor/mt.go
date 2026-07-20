@@ -53,7 +53,10 @@ func (p *Processor) ProvideDomainSelectionInfoProcedure(ueContextID string, info
 	// TODO: Error Status 307, 403 in TS29.518 Table 6.3.3.3.3.1-3
 	anType := ue.GetAnType()
 	if anType != "" && infoClassQuery != "" {
-		ranUe := ue.RanUe[anType]
+		ranUe := ue.RanUeForAccessType(anType)
+		if ranUe == nil {
+			return ueContextInfo, nil
+		}
 		ueContextInfo.AccessType = anType
 		ueContextInfo.LastActTime = ranUe.LastActTime
 		ueContextInfo.RatType = ue.RatType

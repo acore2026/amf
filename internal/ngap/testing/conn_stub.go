@@ -16,7 +16,7 @@ func (c *SctpConnStub) Read(b []byte) (n int, err error) {
 
 func (c *SctpConnStub) Write(b []byte) (n int, err error) {
 	c.MsgList = append(c.MsgList, b)
-	return 0, nil
+	return len(b), nil
 }
 
 func (c *SctpConnStub) Close() error {

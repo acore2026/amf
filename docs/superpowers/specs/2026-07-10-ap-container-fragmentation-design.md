@@ -523,7 +523,7 @@ DL message 2: AP fragment 2
 DL message 3: AP fragment 3
 ```
 
-If AP reassembly remains incomplete, ordinary DL IE responses may still be sent immediately without IEI `0x71`.
+When NAgent integration is enabled, ordinary DL IE responses are retained with the AP reassembly and intent transaction. They are not sent until the HTTP response arrives or the 3-second total HTTP deadline expires. When NAgent integration is disabled, the original local path may still send ordinary responses immediately while AP reassembly remains incomplete.
 
 Every DL Cooperation message is independently NAS integrity protected and ciphered, then sent through `DownlinkNASTransport` on the recorded access type.
 

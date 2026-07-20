@@ -83,3 +83,51 @@ func TestDispatcherJobContextCancelsRequest(t *testing.T) {
 		t.Fatal("callback not invoked")
 	}
 }
+
+func TestDispatcherStopDoesNotInvokeBusinessCallback(t *testing.T) {
+	submitter := &blockingSubmitter{started: make(chan struct{}), release: make(chan struct{})}
+	dispatcher := NewDispatcher(context.Background(), submitter, 1, 1)
+	callback := make(chan Result, 1)
+	if err := dispatcher.Submit(Job{
+		Request:  validIntentRequest(),
+		Callback: func(result Result) { callback <- result },
+	}); err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+	<-submitter.started
+	dispatcher.Stop()
+
+	select {
+	case result := <-callback:
+		t.Fatalf("callback invoked during shutdown: %#v", result)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestDispatcherStopDropsQueuedJobsWithoutCallbacks(t *testing.T) {
+	submitter := &blockingSubmitter{started: make(chan struct{}), release: make(chan struct{})}
+	dispatcher := NewDispatcher(context.Background(), submitter, 1, 1)
+	callback := make(chan Result, 2)
+	if err := dispatcher.Submit(Job{
+		Request:  validIntentRequest(),
+		Callback: func(result Result) { callback <- result },
+	}); err != nil {
+		t.Fatalf("first Submit() error = %v", err)
+	}
+	<-submitter.started
+	second := validIntentRequest()
+	second.PayloadID++
+	if err := dispatcher.Submit(Job{
+		Request:  second,
+		Callback: func(result Result) { callback <- result },
+	}); err != nil {
+		t.Fatalf("second Submit() error = %v", err)
+	}
+
+	dispatcher.Stop()
+	select {
+	case result := <-callback:
+		t.Fatalf("callback invoked during shutdown: %#v", result)
+	case <-time.After(50 * time.Millisecond):
+	}
+}

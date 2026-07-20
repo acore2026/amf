@@ -24,6 +24,8 @@ type Worker struct {
 	taskChan chan Task
 	stopChan chan struct{} // Signal channel for shutdown
 	stopOnce sync.Once     // Ensures stopChan is closed only once
+	tryMu    sync.Mutex    // Serializes non-blocking submission with shutdown.
+	stopped  bool
 	handler  func(conn net.Conn, msg []byte)
 	wg       *sync.WaitGroup
 }
@@ -109,10 +111,30 @@ func (w *Worker) Submit(task Task) bool {
 	}
 }
 
+// TrySubmit queues a task without blocking the caller when the worker queue is full.
+func (w *Worker) TrySubmit(task Task) bool {
+	w.tryMu.Lock()
+	defer w.tryMu.Unlock()
+	if w.stopped {
+		logger.NgapLog.Warnf("Worker %d stopped, rejecting task for UE ID %d", w.ID, task.UEID)
+		return false
+	}
+	select {
+	case w.taskChan <- task:
+		return true
+	default:
+		logger.NgapLog.Warnf("Worker %d queue full, rejecting callback for UE ID %d", w.ID, task.UEID)
+		return false
+	}
+}
+
 // Stop signals the worker to shut down.
 func (w *Worker) Stop() {
 	w.stopOnce.Do(func() {
+		w.tryMu.Lock()
+		w.stopped = true
 		close(w.stopChan)
+		w.tryMu.Unlock()
 	})
 }
 
@@ -151,6 +173,12 @@ func (s *UEScheduler) DispatchTask(task Task) bool {
 	logger.NgapLog.Debugf("Dispatching UE ID %d to Worker %d (hash-based routing)",
 		task.UEID, workerIndex)
 	return worker.Submit(task)
+}
+
+func (s *UEScheduler) TryDispatchTask(task Task) bool {
+	workerIndex := s.hashUEID(task.UEID)
+	worker := s.workers[workerIndex]
+	return worker.TrySubmit(task)
 }
 
 // hashUEID computes a hash of the UE ID and maps it to a worker index.
@@ -220,7 +248,7 @@ func DispatchUECallback(ueID uint64, callback func()) bool {
 		logger.NgapLog.Errorf("Cannot dispatch UE callback for UE ID %d: %v", ueID, err)
 		return false
 	}
-	return scheduler.DispatchTask(Task{UEID: ueID, Callback: callback})
+	return scheduler.TryDispatchTask(Task{UEID: ueID, Callback: callback})
 }
 
 // ShutdownScheduler gracefully shuts down the global scheduler.

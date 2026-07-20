@@ -71,7 +71,7 @@ func HandleNAS(ranUe *amf_context.RanUe, procedureCode int64, nasPdu []byte, ini
 	ranUe.AmfUe.MacFailed = !integrityProtected
 
 	if ranUe.AmfUe.SecurityContextIsValid() && ranUe.HoldingAmfUe != nil {
-		gmm_common.ClearHoldingRanUe(ranUe.HoldingAmfUe.RanUe[ranUe.Ran.AnType])
+		gmm_common.ClearHoldingRanUe(ranUe.HoldingAmfUe.RanUeForAccessType(ranUe.Ran.AnType))
 		ranUe.HoldingAmfUe = nil
 	}
 

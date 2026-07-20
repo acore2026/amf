@@ -17,6 +17,10 @@ import (
 const (
 	apIntentErrorPayloadIDConflict = "PAYLOAD_ID_CONFLICT"
 	apIntentErrorQueueFull         = "AMF_QUEUE_FULL"
+	apIntentResponseContainerType  = 0x0101
+	apIntentMaxCallbackReroutes    = 3
+	apIntentDispatchRetryDelay     = 20 * time.Millisecond
+	apIntentMaxDispatchRetryDelay  = time.Second
 )
 
 type APIntentJobDispatcher interface {
@@ -25,12 +29,27 @@ type APIntentJobDispatcher interface {
 
 type apIntentJobDispatcher = APIntentJobDispatcher
 
-type apIntentResponseSender func(*amf_context.AmfUe, amf_context.APIntentTransaction) bool
+type apIntentResponseSender func(
+	*amf_context.AmfUe,
+	*amf_context.RanUe,
+	amf_context.APIntentTransaction,
+) bool
+
+type apIntentDeliveryResult uint8
+
+const (
+	apIntentDeliveryUnavailable apIntentDeliveryResult = iota
+	apIntentDeliverySent
+	apIntentDeliveryFailed
+	apIntentDeliveryAssociationChanged
+)
 
 type apIntentRuntimeConfig struct {
 	Enabled            bool
+	Generation         uint64
 	Dispatcher         apIntentJobDispatcher
 	DispatchUECallback func(uint64, func()) bool
+	RequestTimeout     time.Duration
 	ResponseTTL        time.Duration
 	MaxInFlightPerUE   int
 	Sender             apIntentResponseSender
@@ -38,13 +57,15 @@ type apIntentRuntimeConfig struct {
 
 var apIntentRuntime = struct {
 	sync.RWMutex
-	config apIntentRuntimeConfig
+	config         apIntentRuntimeConfig
+	nextGeneration uint64
 }{}
 
 func ConfigureAPIntentIntegration(
 	enabled bool,
 	dispatcher APIntentJobDispatcher,
 	dispatchUECallback func(uint64, func()) bool,
+	requestTimeout time.Duration,
 	responseTTL time.Duration,
 	maxInFlightPerUE int,
 ) {
@@ -52,6 +73,7 @@ func ConfigureAPIntentIntegration(
 		Enabled:            enabled,
 		Dispatcher:         dispatcher,
 		DispatchUECallback: dispatchUECallback,
+		RequestTimeout:     requestTimeout,
 		ResponseTTL:        responseTTL,
 		MaxInFlightPerUE:   maxInFlightPerUE,
 		Sender:             deliverAPIntentResponse,
@@ -59,6 +81,9 @@ func ConfigureAPIntentIntegration(
 }
 
 func configureAPIntentRuntime(config apIntentRuntimeConfig) {
+	if config.RequestTimeout <= 0 {
+		config.RequestTimeout = 3 * time.Second
+	}
 	if config.ResponseTTL <= 0 {
 		config.ResponseTTL = time.Minute
 	}
@@ -70,6 +95,8 @@ func configureAPIntentRuntime(config apIntentRuntimeConfig) {
 		config.Sender = deliverAPIntentResponse
 	}
 	apIntentRuntime.Lock()
+	apIntentRuntime.nextGeneration++
+	config.Generation = apIntentRuntime.nextGeneration
 	apIntentRuntime.config = config
 	apIntentRuntime.Unlock()
 }
@@ -78,6 +105,11 @@ func currentAPIntentRuntime() apIntentRuntimeConfig {
 	apIntentRuntime.RLock()
 	defer apIntentRuntime.RUnlock()
 	return apIntentRuntime.config
+}
+
+func apIntentRuntimeIsActive(runtime apIntentRuntimeConfig) bool {
+	current := currentAPIntentRuntime()
+	return current.Enabled && current.Generation == runtime.Generation
 }
 
 func apIntentIntegrationEnabled() bool {
@@ -109,51 +141,76 @@ func processCompletedAPIntent(
 		ContainerType:    complete.ContainerType,
 		ContainerTypePTI: complete.ContainerTypePTI,
 		Payload:          append([]byte(nil), complete.Payload...),
+		PendingDLIEs:     cooperationIEData(ordinary),
 	}
+	_, intentBody, err := nagent.ValidateIntentRequestBody(complete.Payload)
+	if err != nil {
+		code, retryable, httpStatus := apIntentErrorDetails(err)
+		return buildImmediateAPIntentError(ordinary, request, code, retryable, httpStatus)
+	}
+	requestForHTTP.Payload = intentBody
+	request.HTTPRequestID = nagent.IdempotencyKey(requestForHTTP)
 	begin, transaction := ue.GetOrCreateCooperationContext().BeginAPIntentWithLimit(
 		request, time.Now(), runtime.MaxInFlightPerUE,
 	)
 	switch begin {
 	case amf_context.APIntentBeginPending:
-		return groupOrdinaryDLCooperationIEs(ordinary), nil
-	case amf_context.APIntentBeginReplay:
-		groups, err := buildAPIntentDLGroups(ordinary, transaction)
-		if err == nil {
-			ue.CooperationContext.MarkAPIntentSent(transaction.PayloadID, transaction.Generation)
+		if transaction.Status == amf_context.APIntentSending {
+			return groupOrdinaryDLCooperationIEs(ordinary), nil
 		}
-		return groups, err
+		return nil, nil
+	case amf_context.APIntentBeginReplay:
+		ue.CooperationContext.PrepareAPIntentReplay(transaction.PayloadID, transaction.Generation)
+		return nil, nil
 	case amf_context.APIntentBeginConflict:
 		return buildImmediateAPIntentError(ordinary, request, apIntentErrorPayloadIDConflict, false, 0)
 	case amf_context.APIntentBeginLimit:
 		return buildImmediateAPIntentError(ordinary, request, apIntentErrorQueueFull, true, 0)
 	case amf_context.APIntentBeginNew:
+		ue.CooperationContext.StoreCompletedAPContainer(amf_context.CompletedAPContainer{
+			ContainerType:      complete.ContainerType,
+			ContainerTypePTI:   complete.ContainerTypePTI,
+			ContainerPayloadID: complete.ContainerPayloadID,
+			Payload:            complete.Payload,
+			CompletedAt:        time.Now(),
+		})
 	default:
-		return groupOrdinaryDLCooperationIEs(ordinary), nil
+		return nil, nil
 	}
 
 	if runtime.Dispatcher == nil || runtime.DispatchUECallback == nil {
 		ue.CooperationContext.RemoveAPIntent(transaction.PayloadID, transaction.Generation)
 		return buildImmediateAPIntentError(ordinary, request, nagent.ErrorCodeUnavailable, true, 0)
 	}
-	jobContext, cancel := stdcontext.WithCancel(stdcontext.Background())
+	jobContext, cancel := stdcontext.WithTimeout(stdcontext.Background(), runtime.RequestTimeout)
 	if !ue.CooperationContext.SetAPIntentCancel(transaction.PayloadID, transaction.Generation, cancel) {
 		cancel()
-		return groupOrdinaryDLCooperationIEs(ordinary), nil
+		return nil, nil
 	}
-	ranUe := ue.RanUe[accessType]
-	ueID := uint64(0)
-	if ranUe != nil {
-		ueID = uint64(ranUe.AmfUeNgapId)
-	}
-	err := runtime.Dispatcher.Submit(nagent.Job{
+	stopDeadline := stdcontext.AfterFunc(jobContext, func() {
+		if !errors.Is(jobContext.Err(), stdcontext.DeadlineExceeded) {
+			return
+		}
+		handleAPIntentHTTPResult(runtime, ue, transaction, nagent.Result{
+			Request: requestForHTTP,
+			Err: &nagent.Error{
+				Code:      nagent.ErrorCodeTimeout,
+				Retryable: true,
+				Cause:     stdcontext.DeadlineExceeded,
+			},
+		})
+	})
+	err = runtime.Dispatcher.Submit(nagent.Job{
 		Context: jobContext,
 		Request: requestForHTTP,
 		Callback: func(result nagent.Result) {
+			stopDeadline()
 			cancel()
-			handleAPIntentHTTPResult(runtime, ue, ranUe, ueID, transaction, result)
+			handleAPIntentHTTPResult(runtime, ue, transaction, result)
 		},
 	})
 	if err != nil {
+		stopDeadline()
 		cancel()
 		ue.CooperationContext.RemoveAPIntent(transaction.PayloadID, transaction.Generation)
 		code := nagent.ErrorCodeUnavailable
@@ -162,17 +219,27 @@ func processCompletedAPIntent(
 		}
 		return buildImmediateAPIntentError(ordinary, request, code, true, 0)
 	}
-	return groupOrdinaryDLCooperationIEs(ordinary), nil
+	return nil, nil
 }
 
 func handleAPIntentHTTPResult(
 	runtime apIntentRuntimeConfig,
 	ue *amf_context.AmfUe,
-	expectedRanUe *amf_context.RanUe,
-	ueID uint64,
 	transaction amf_context.APIntentTransaction,
 	result nagent.Result,
 ) {
+	if !apIntentRuntimeIsActive(runtime) {
+		return
+	}
+	if transaction.HTTPRequestID != "" &&
+		nagent.IdempotencyKey(result.Request) != transaction.HTTPRequestID {
+		result.Response = nil
+		result.Err = &nagent.Error{
+			Code:      nagent.ErrorCodeInvalidResponse,
+			Retryable: false,
+			Cause:     errors.New("NAgent HTTP result does not match the AP intent transaction"),
+		}
+	}
 	response := append([]byte(nil), result.Response...)
 	isError := result.Err != nil
 	if isError {
@@ -183,11 +250,72 @@ func handleAPIntentHTTPResult(
 	) {
 		return
 	}
-	runtime.DispatchUECallback(ueID, func() {
-		if expectedRanUe == nil || expectedRanUe.AmfUe != ue {
+	currentRanUe := ue.APDeliveryRanUe(transaction.AccessType)
+	if currentRanUe == nil {
+		return
+	}
+	dispatchReadyAPIntent(
+		runtime, ue, currentRanUe, uint64(currentRanUe.AmfUeNgapId), transaction, 0, 0,
+	)
+}
+
+func dispatchReadyAPIntent(
+	runtime apIntentRuntimeConfig,
+	ue *amf_context.AmfUe,
+	expectedRanUe *amf_context.RanUe,
+	ueID uint64,
+	transaction amf_context.APIntentTransaction,
+	reroutes int,
+	dispatchRetries int,
+) {
+	callback := func() {
+		if !apIntentRuntimeIsActive(runtime) {
 			return
 		}
-		deliverReadyAPIntent(ue, transaction.PayloadID, transaction.Generation, runtime.Sender)
+		if deliverReadyAPIntent(
+			ue, transaction.PayloadID, transaction.Generation, expectedRanUe, true, runtime.Sender,
+		) != apIntentDeliveryAssociationChanged || reroutes >= apIntentMaxCallbackReroutes {
+			return
+		}
+		currentRanUe := ue.APDeliveryRanUe(transaction.AccessType)
+		if currentRanUe == nil {
+			return
+		}
+		dispatchReadyAPIntent(
+			runtime,
+			ue,
+			currentRanUe,
+			uint64(currentRanUe.AmfUeNgapId),
+			transaction,
+			reroutes+1,
+			0,
+		)
+	}
+	if runtime.DispatchUECallback != nil && runtime.DispatchUECallback(ueID, callback) {
+		return
+	}
+	if ue == nil || ue.CooperationContext == nil {
+		return
+	}
+	candidate, ok := ue.CooperationContext.APIntent(transaction.PayloadID, transaction.Generation)
+	if !ok || candidate.Status != amf_context.APIntentReady {
+		return
+	}
+	shift := dispatchRetries
+	if shift > 6 {
+		shift = 6
+	}
+	delay := apIntentDispatchRetryDelay * time.Duration(1<<shift)
+	if delay > apIntentMaxDispatchRetryDelay {
+		delay = apIntentMaxDispatchRetryDelay
+	}
+	time.AfterFunc(delay, func() {
+		if !apIntentRuntimeIsActive(runtime) {
+			return
+		}
+		dispatchReadyAPIntent(
+			runtime, ue, expectedRanUe, ueID, transaction, reroutes, dispatchRetries+1,
+		)
 	})
 }
 
@@ -195,50 +323,173 @@ func deliverReadyAPIntent(
 	ue *amf_context.AmfUe,
 	payloadID uint16,
 	generation uint64,
+	expectedRanUe *amf_context.RanUe,
+	requireRegistered bool,
 	sender apIntentResponseSender,
-) {
+) (result apIntentDeliveryResult) {
 	if ue == nil || ue.CooperationContext == nil {
-		return
+		return apIntentDeliveryUnavailable
 	}
-	transaction, ok := ue.CooperationContext.APIntent(payloadID, generation)
-	if !ok || transaction.Status != amf_context.APIntentReady {
-		return
+	candidate, ok := ue.CooperationContext.APIntent(payloadID, generation)
+	if !ok || candidate.Status != amf_context.APIntentReady {
+		return apIntentDeliveryUnavailable
 	}
-	if sender(ue, transaction) {
-		ue.CooperationContext.MarkAPIntentSent(payloadID, generation)
+	accessType := candidate.AccessType
+	ranUe, deliveryRanUe, associationGeneration, associated :=
+		ue.APDeliveryRanUeSnapshot(accessType, expectedRanUe)
+	if !associated {
+		if ue.APDeliveryRanUe(accessType) != nil {
+			return apIntentDeliveryAssociationChanged
+		}
+		return apIntentDeliveryUnavailable
 	}
+	if requireRegistered {
+		state := ue.State[accessType]
+		if state == nil || !state.Is(amf_context.Registered) {
+			return apIntentDeliveryUnavailable
+		}
+	}
+	transaction, claimed := ue.CooperationContext.ClaimAPIntentDelivery(payloadID, generation)
+	if !claimed || transaction.AccessType != accessType {
+		return apIntentDeliveryUnavailable
+	}
+	finished := false
+	defer func() {
+		if !finished {
+			_, _ = ue.CooperationContext.FinishAPIntentDeliveryAttempt(
+				payloadID, generation, transaction.DeliveryAttempt, false,
+			)
+		}
+	}()
+	if !ue.APDeliveryRanUeSnapshotCurrent(accessType, ranUe, associationGeneration) {
+		_, finished = ue.CooperationContext.FinishAPIntentDeliveryAttempt(
+			payloadID, generation, transaction.DeliveryAttempt, false,
+		)
+		return apIntentDeliveryAssociationChanged
+	}
+	sent := sender(ue, deliveryRanUe, transaction)
+	associationCurrent := ue.APDeliveryRanUeSnapshotCurrent(accessType, ranUe, associationGeneration)
+	commitSent := sent && associationCurrent
+	status, didFinish := ue.CooperationContext.FinishAPIntentDeliveryAttempt(
+		payloadID, generation, transaction.DeliveryAttempt, commitSent,
+	)
+	finished = didFinish
+	if !finished {
+		return apIntentDeliveryUnavailable
+	}
+	if status == amf_context.APIntentSent {
+		return apIntentDeliverySent
+	}
+	if !associationCurrent {
+		return apIntentDeliveryAssociationChanged
+	}
+	return apIntentDeliveryFailed
 }
 
-func sendPendingAPIntentResponses(ue *amf_context.AmfUe, accessType models.AccessType) {
+func deliverReadyAPIntentFollowingAssociation(
+	ue *amf_context.AmfUe,
+	payloadID uint16,
+	generation uint64,
+	requireRegistered bool,
+	sender apIntentResponseSender,
+) apIntentDeliveryResult {
+	for attempts := 0; attempts <= apIntentMaxCallbackReroutes; attempts++ {
+		result := deliverReadyAPIntent(ue, payloadID, generation, nil, requireRegistered, sender)
+		if result != apIntentDeliveryAssociationChanged {
+			return result
+		}
+	}
+	return apIntentDeliveryAssociationChanged
+}
+
+func sendPendingAPIntentResponses(
+	ue *amf_context.AmfUe,
+	accessType models.AccessType,
+	requireRegistered bool,
+) {
 	runtime := currentAPIntentRuntime()
 	if !runtime.Enabled || ue == nil || ue.CooperationContext == nil {
 		return
 	}
 	for _, transaction := range ue.CooperationContext.ReadyAPIntents(accessType, time.Now()) {
-		deliverReadyAPIntent(ue, transaction.PayloadID, transaction.Generation, runtime.Sender)
+		deliverReadyAPIntentFollowingAssociation(
+			ue, transaction.PayloadID, transaction.Generation, requireRegistered, runtime.Sender,
+		)
 	}
 }
 
-func deliverAPIntentResponse(ue *amf_context.AmfUe, transaction amf_context.APIntentTransaction) bool {
-	ranUe := ue.RanUe[transaction.AccessType]
+func NotifyAPIntentDeliveryAvailable(ue *amf_context.AmfUe, accessType models.AccessType) {
+	sendPendingAPIntentResponses(ue, accessType, true)
+}
+
+// HandleAPIntentNASNonDelivery returns a matched transport-submitted AP intent
+// response to Ready. It is retried when the UE next becomes delivery-available.
+func HandleAPIntentNASNonDelivery(
+	ue *amf_context.AmfUe,
+	accessType models.AccessType,
+	nasPDU []byte,
+) bool {
+	if ue == nil || ue.CooperationContext == nil {
+		return false
+	}
+	transaction, matched := ue.CooperationContext.MarkAPIntentNASNonDelivery(accessType, nasPDU)
+	if !matched {
+		return false
+	}
+	ue.GmmLog.Warnf(
+		"NAgent DL AP Container was not delivered payloadId=0x%04x attempt=%d; waiting for next delivery opportunity",
+		transaction.PayloadID, transaction.DeliveryAttempt,
+	)
+	return true
+}
+
+func deliverAPIntentResponse(
+	ue *amf_context.AmfUe,
+	ranUe *amf_context.RanUe,
+	transaction amf_context.APIntentTransaction,
+) bool {
 	if ranUe == nil || !ue.SecurityContextAvailable {
 		return false
 	}
-	container := &nasMessage.APContainer{
-		ContainerType:      transaction.ContainerType,
-		ContainerTypePTI:   transaction.ContainerTypePTI,
-		ContainerPayloadID: transaction.PayloadID,
-		ContainerFlags:     0,
-		FragmentOffset:     0,
-		Payload:            append([]byte(nil), transaction.ResponsePayload...),
+	ordinary, err := cooperationIEsFromData(transaction.PendingDLIEs)
+	if err != nil {
+		ue.GmmLog.Errorf("Restore pending DL Cooperation IEs failed: %v", err)
+		return false
 	}
-	ies, err := buildDLAPContainerIEs(transaction.MessageIdentity, container)
+	groups, err := buildAPIntentDLGroups(ordinary, transaction)
 	if err != nil {
 		ue.GmmLog.Errorf("Build NAgent DL AP Container failed: %v", err)
 		return false
 	}
-	for _, ie := range ies {
-		gmm_message.SendDLCooperation(ranUe, transaction.MessageIdentity, []*nasMessage.CooperationIE{ie})
+	for index, ies := range groups {
+		if !ue.APDeliveryTargetCurrent(transaction.AccessType, ranUe) {
+			return false
+		}
+		nasPDU, err := gmm_message.SendDLCooperationWithResult(
+			ranUe, transaction.MessageIdentity, ies,
+		)
+		if err != nil {
+			ue.GmmLog.Errorf(
+				"Send NAgent DL AP Container failed payloadId=0x%04x message=%d/%d: %v",
+				transaction.PayloadID, index+1, len(groups), err,
+			)
+			return false
+		}
+		if !ue.CooperationContext.RecordAPIntentDLNAS(
+			transaction.PayloadID,
+			transaction.Generation,
+			transaction.DeliveryAttempt,
+			nasPDU,
+		) {
+			ue.GmmLog.Errorf(
+				"Track NAgent DL AP Container failed payloadId=0x%04x attempt=%d message=%d/%d",
+				transaction.PayloadID, transaction.DeliveryAttempt, index+1, len(groups),
+			)
+			return false
+		}
+		if !ue.APDeliveryTargetCurrent(transaction.AccessType, ranUe) {
+			return false
+		}
 	}
 	return true
 }
@@ -248,7 +499,7 @@ func buildAPIntentDLGroups(
 	transaction amf_context.APIntentTransaction,
 ) ([][]*nasMessage.CooperationIE, error) {
 	container := &nasMessage.APContainer{
-		ContainerType:      transaction.ContainerType,
+		ContainerType:      apIntentResponseContainerType,
 		ContainerTypePTI:   transaction.ContainerTypePTI,
 		ContainerPayloadID: transaction.PayloadID,
 		Payload:            append([]byte(nil), transaction.ResponsePayload...),
@@ -276,16 +527,20 @@ func buildImmediateAPIntentError(
 }
 
 func buildAPIntentErrorPayloadFromError(err error) []byte {
-	code := nagent.ErrorCodeUnavailable
-	retryable := true
-	httpStatus := 0
+	code, retryable, httpStatus := apIntentErrorDetails(err)
+	return buildAPIntentErrorPayload(code, retryable, httpStatus)
+}
+
+func apIntentErrorDetails(err error) (code string, retryable bool, httpStatus int) {
+	code = nagent.ErrorCodeUnavailable
+	retryable = true
 	var intentError *nagent.Error
 	if errors.As(err, &intentError) {
 		code = intentError.Code
 		retryable = intentError.Retryable
 		httpStatus = intentError.HTTPStatus
 	}
-	return buildAPIntentErrorPayload(code, retryable, httpStatus)
+	return code, retryable, httpStatus
 }
 
 func buildAPIntentErrorPayload(code string, retryable bool, httpStatus int) []byte {
@@ -313,6 +568,10 @@ func apIntentPublicErrorMessage(code string) string {
 	switch code {
 	case nagent.ErrorCodeInvalidJSON:
 		return "The intent payload is not valid JSON"
+	case nagent.ErrorCodeInvalidRequest:
+		return "The intent request is invalid"
+	case nagent.ErrorCodePayloadTooLarge:
+		return "The intent payload is too large"
 	case apIntentErrorPayloadIDConflict:
 		return "The payload identifier is already in use"
 	case apIntentErrorQueueFull:

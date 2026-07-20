@@ -51,3 +51,17 @@ func TestBuildDLCooperationRejectsMultipleAPContainers(t *testing.T) {
 		t.Fatalf("BuildDLCooperation() error = %v", err)
 	}
 }
+
+func TestSendDLCooperationReturnsPreconditionErrors(t *testing.T) {
+	if err := SendDLCooperation(nil, 1, nil); err == nil {
+		t.Fatal("SendDLCooperation(nil) error = nil")
+	}
+	if err := SendDLCooperation(&context.RanUe{}, 1, nil); err == nil {
+		t.Fatal("SendDLCooperation() error = nil without AmfUe")
+	}
+	if err := SendDLCooperation(&context.RanUe{
+		AmfUe: &context.AmfUe{GmmLog: logger.GmmLog},
+	}, 1, nil); err == nil {
+		t.Fatal("SendDLCooperation() error = nil without Ran")
+	}
+}
