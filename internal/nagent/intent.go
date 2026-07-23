@@ -80,7 +80,17 @@ func AdaptIntentPayload(payload []byte, supi string) ([]byte, error) {
 		}
 	}
 	if _, ok := fields["source_device"]; !ok {
-		fields["source_device"] = supi
+		fields["source_device"] = map[string]string{
+			"device_id":   supi,
+			"device_type": "UE",
+		}
+	}
+	if _, ok := fields["intent_payload"]; !ok {
+		if _, ok := fields["intent"]; !ok {
+			if desc, ok := fields["intentDescription"].(string); ok {
+				fields["intent_payload"] = desc
+			}
+		}
 	}
 
 	adapted, err := json.Marshal(fields)

@@ -288,12 +288,13 @@ intentPriority 必须是整数
 
 校验失败时不会提交 HTTP 请求，AMF 会生成 NAgent 错误 JSON，并用 DL AP Container 返回给 UE。
 
-校验通过后，AMF 会对 payload 做适配（`AdaptIntentPayload`），在转发前补充外部 NAgent 所需的 snake_case 字段：
+校验通过后，AMF 会对 payload 做适配（`AdaptIntentPayload`），在转发前补充外部 NAgent 所需的字段：
 
 ```text
 request_id     若不存在，从 intentId 映射
 intent_type    若不存在，从 intentType 映射
-source_device  若不存在，从 UE SUPI 填入
+source_device  若不存在，填入 {"device_id": <SUPI>, "device_type": "UE"}
+intent_payload 若不存在且 intent 也不存在，从 intentDescription 映射
 ```
 
 如果 payload 中已经包含这些字段，AMF 不会覆盖。适配后的 payload 才是实际发送给 NAgent 的 HTTP body。
@@ -314,10 +315,10 @@ X-AP-Container-Type: <decimal>
 X-AP-PTI: <decimal>
 X-AP-Payload-ID: <decimal>
 
-<适配后的 payload，包含原始 Intent 字段 + request_id / intent_type / source_device>
+<适配后的 payload，包含原始 Intent 字段 + request_id / intent_type / source_device / intent_payload>
 ```
 
-示例（UL AP Container Payload 为原始 Intent JSON，AMF 适配后追加3个 snake_case 字段）：
+示例（UL AP Container Payload 为原始 Intent JSON，AMF 适配后追加4个 agent 字段）：
 
 ```http
 POST /nagent-intent/v1/intent/imsi-001010000000001 HTTP/1.1
@@ -331,7 +332,7 @@ X-AP-Container-Type: 257
 X-AP-PTI: 42
 X-AP-Payload-ID: 4660
 
-{"intentId":"intent-001","issuer":"ue","intentPriority":10,"intentType":"location","intentDescription":"Locate the target UE","object":"ue-location","constraint":"accuracy<100m","target":"imsi-001010000000002","request_id":"intent-001","intent_type":"location","source_device":"imsi-001010000000001"}
+{"intentId":"intent-001","issuer":"ue","intentPriority":10,"intentType":"location","intentDescription":"Locate the target UE","object":"ue-location","constraint":"accuracy<100m","target":"imsi-001010000000002","request_id":"intent-001","intent_type":"location","source_device":{"device_id":"imsi-001010000000001","device_type":"UE"},"intent_payload":"Locate the target UE"}
 ```
 
 注意：
@@ -339,7 +340,8 @@ X-AP-Payload-ID: 4660
 ```text
 0x0101 的十进制 HTTP header 表示是 257
 0x1234 的十进制 HTTP header 表示是 4660
-HTTP body 中的 request_id / intent_type / source_device 由 AMF 自动补填
+HTTP body 中的 request_id / intent_type / source_device / intent_payload 由 AMF 自动补填
+source_device 为对象格式，包含 device_id（SUPI）和 device_type（"UE"）
 ```
 
 ## 9. HTTP 响应处理
