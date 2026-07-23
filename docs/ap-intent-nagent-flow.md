@@ -280,13 +280,23 @@ AMF 校验规则：
 
 ```text
 必须是合法 JSON
-必须是完整 Intent 对象
-不允许未知字段
+必须是完整 Intent 对象（8 个必填字段全部存在）
+允许携带额外字段（不拒绝未知字段）
 intentPriority 必须是整数
-所有字段必须存在
+所有必填字段必须存在
 ```
 
 校验失败时不会提交 HTTP 请求，AMF 会生成 NAgent 错误 JSON，并用 DL AP Container 返回给 UE。
+
+校验通过后，AMF 会对 payload 做适配（`AdaptIntentPayload`），在转发前补充外部 NAgent 所需的 snake_case 字段：
+
+```text
+request_id     若不存在，从 intentId 映射
+intent_type    若不存在，从 intentType 映射
+source_device  若不存在，从 UE SUPI 填入
+```
+
+如果 payload 中已经包含这些字段，AMF 不会覆盖。适配后的 payload 才是实际发送给 NAgent 的 HTTP body。
 
 ## 8. HTTP 请求格式
 
@@ -304,10 +314,10 @@ X-AP-Container-Type: <decimal>
 X-AP-PTI: <decimal>
 X-AP-Payload-ID: <decimal>
 
-<exact UL AP Container Payload bytes>
+<适配后的 payload，包含原始 Intent 字段 + request_id / intent_type / source_device>
 ```
 
-示例：
+示例（UL AP Container Payload 为原始 Intent JSON，AMF 适配后追加3个 snake_case 字段）：
 
 ```http
 POST /nagent-intent/v1/intent/imsi-001010000000001 HTTP/1.1
@@ -321,7 +331,7 @@ X-AP-Container-Type: 257
 X-AP-PTI: 42
 X-AP-Payload-ID: 4660
 
-{"intentId":"intent-001","issuer":"ue","intentPriority":10,"intentType":"location","intentDescription":"Locate the target UE","object":"ue-location","constraint":"accuracy<100m","target":"imsi-001010000000002"}
+{"intentId":"intent-001","issuer":"ue","intentPriority":10,"intentType":"location","intentDescription":"Locate the target UE","object":"ue-location","constraint":"accuracy<100m","target":"imsi-001010000000002","request_id":"intent-001","intent_type":"location","source_device":"imsi-001010000000001"}
 ```
 
 注意：
@@ -329,6 +339,7 @@ X-AP-Payload-ID: 4660
 ```text
 0x0101 的十进制 HTTP header 表示是 257
 0x1234 的十进制 HTTP header 表示是 4660
+HTTP body 中的 request_id / intent_type / source_device 由 AMF 自动补填
 ```
 
 ## 9. HTTP 响应处理

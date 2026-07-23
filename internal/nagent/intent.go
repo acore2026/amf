@@ -35,7 +35,6 @@ func ValidateIntentRequestBody(payload []byte) (Intent, []byte, error) {
 
 	var wire intentWire
 	decoder := json.NewDecoder(bytes.NewReader(payload))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&wire); err != nil {
 		return Intent{}, nil, &Error{
 			Code:  ErrorCodeInvalidRequest,
@@ -62,4 +61,31 @@ func ValidateIntentRequestBody(payload []byte) (Intent, []byte, error) {
 		Target:            *wire.Target,
 	}
 	return intent, append([]byte(nil), payload...), nil
+}
+
+func AdaptIntentPayload(payload []byte, supi string) ([]byte, error) {
+	var fields map[string]interface{}
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		return nil, &Error{Code: ErrorCodeInvalidJSON, Cause: err}
+	}
+
+	if _, ok := fields["request_id"]; !ok {
+		if intentID, ok := fields["intentId"].(string); ok && intentID != "" {
+			fields["request_id"] = intentID
+		}
+	}
+	if _, ok := fields["intent_type"]; !ok {
+		if intentType, ok := fields["intentType"].(string); ok {
+			fields["intent_type"] = intentType
+		}
+	}
+	if _, ok := fields["source_device"]; !ok {
+		fields["source_device"] = supi
+	}
+
+	adapted, err := json.Marshal(fields)
+	if err != nil {
+		return nil, &Error{Code: ErrorCodeInvalidRequest, Cause: err}
+	}
+	return adapted, nil
 }

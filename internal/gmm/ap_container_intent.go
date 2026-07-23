@@ -148,7 +148,12 @@ func processCompletedAPIntent(
 		code, retryable, httpStatus := apIntentErrorDetails(err)
 		return buildImmediateAPIntentError(ordinary, request, code, retryable, httpStatus)
 	}
-	requestForHTTP.Payload = intentBody
+	adaptedBody, err := nagent.AdaptIntentPayload(intentBody, ue.Supi)
+	if err != nil {
+		code, retryable, httpStatus := apIntentErrorDetails(err)
+		return buildImmediateAPIntentError(ordinary, request, code, retryable, httpStatus)
+	}
+	requestForHTTP.Payload = adaptedBody
 	request.HTTPRequestID = nagent.IdempotencyKey(requestForHTTP)
 	begin, transaction := ue.GetOrCreateCooperationContext().BeginAPIntentWithLimit(
 		request, time.Now(), runtime.MaxInFlightPerUE,

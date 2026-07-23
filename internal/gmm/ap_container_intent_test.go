@@ -70,7 +70,8 @@ func TestAPIntentWaitsToDeliverOrdinaryIEWithEcho(t *testing.T) {
 		t.Fatalf("DL messages before HTTP response = %#v, want none", dlMessages)
 	}
 	jobs := dispatcher.Jobs()
-	if len(jobs) != 1 || !bytes.Equal(jobs[0].Request.Payload, testIntentPayload(t, payload)) {
+	wantPayload := testAdaptedIntentPayload(t, testIntentPayload(t, payload), ue.Supi)
+	if len(jobs) != 1 || !bytes.Equal(jobs[0].Request.Payload, wantPayload) {
 		t.Fatalf("jobs = %#v", jobs)
 	}
 
@@ -900,7 +901,7 @@ func TestAPIntentReassemblesThroughMockHTTPAndFragmentsDL(t *testing.T) {
 	ue := testAPIntentUE(t)
 	description := []byte(`{"intent":"` + strings.Repeat("x", 600) + `"}`)
 	ulPayload := testIntentPayload(t, description)
-	wantResponse := ulPayload
+	wantResponse := testAdaptedIntentPayload(t, ulPayload, ue.Supi)
 	const fragmentSize = 200
 	for offset := 0; offset < len(ulPayload); offset += fragmentSize {
 		end := offset + fragmentSize
@@ -1022,7 +1023,7 @@ func TestAPIntentAllowsParallelPayloadsToCompleteIndependently(t *testing.T) {
 	select {
 	case transaction := <-delivered:
 		if transaction.PayloadID != 2 ||
-			!bytes.Equal(transaction.ResponsePayload, testIntentPayload(t, []byte(`{"id":2}`))) {
+			!bytes.Equal(transaction.ResponsePayload, testAdaptedIntentPayload(t, testIntentPayload(t, []byte(`{"id":2}`)), ue.Supi)) {
 			t.Fatalf("first completed transaction = %#v, want payload 2", transaction)
 		}
 	case <-time.After(time.Second):
@@ -1032,7 +1033,7 @@ func TestAPIntentAllowsParallelPayloadsToCompleteIndependently(t *testing.T) {
 	select {
 	case transaction := <-delivered:
 		if transaction.PayloadID != 1 ||
-			!bytes.Equal(transaction.ResponsePayload, testIntentPayload(t, []byte(`{"id":1}`))) {
+			!bytes.Equal(transaction.ResponsePayload, testAdaptedIntentPayload(t, testIntentPayload(t, []byte(`{"id":1}`)), ue.Supi)) {
 			t.Fatalf("second completed transaction = %#v, want payload 1", transaction)
 		}
 	case <-time.After(time.Second):
@@ -1111,6 +1112,15 @@ func testIntentPayload(t *testing.T, description []byte) []byte {
 		t.Fatalf("encode test Intent: %v", err)
 	}
 	return payload
+}
+
+func testAdaptedIntentPayload(t *testing.T, payload []byte, supi string) []byte {
+	t.Helper()
+	adapted, err := nagent.AdaptIntentPayload(payload, supi)
+	if err != nil {
+		t.Fatalf("AdaptIntentPayload() error = %v", err)
+	}
+	return adapted
 }
 
 func readyAPIntentTransaction(
