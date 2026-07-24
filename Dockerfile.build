@@ -1,6 +1,7 @@
 FROM golang:1.25.5-trixie AS builder
 
-RUN apt-get update && apt-get install -y git gcc musl-dev && rm -rf /var/lib/apt/lists/*
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update && apt-get install -y git gcc musl-dev && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 
@@ -22,7 +23,8 @@ LABEL description="Free5GC open source 5G Core Network - AMF" \
 
 ENV F5GC_MODULE=amf
 
-RUN apk add --no-cache tini
+RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories && \
+    apk add --no-cache tini
 
 WORKDIR /free5gc
 RUN mkdir -p config/ log/ cert/

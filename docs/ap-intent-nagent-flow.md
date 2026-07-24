@@ -828,3 +828,85 @@ internal/ngap/scheduler.go
 UE 或 NAS 代理必须主动发送 UL Cooperation，AMF 才会触发 NAgent 流程。
 
 兼容性说明：协议约定 Intent 使用 `ContainerType=0x0101`。当前 AMF 实现不解析 AP payload 内部语义；DL 响应和错误始终使用 `ContainerType=0x0101`。
+
+## 18. curl 模拟命令
+
+以下 curl 命令模拟 AMF 收到 UE NAS 消息后发送给外部 NAgent 的 HTTP 请求。HTTP 头由 AMF 从 NAS 元数据和 UE 上下文填写，HTTP body 为 UE AP Container Payload 的不透明透传。
+
+### AMF 填写的部分
+
+| curl 部分 | 来源 | 示例 |
+|---|---|---|
+| URL 主机端口 | `amfcfg.yaml` `nagent.baseUri` | `http://192.168.1.10:9100` |
+| URL 路径 `{supi}` | UE 注册上下文 `ue.Supi` | `imsi-001010000000001` |
+| `Content-Type` | AMF 固定 | `application/json` |
+| `Accept` | AMF 固定 | `application/json` |
+| `Idempotency-Key` | AMF 用 SHA-256 算指纹 | 64 位十六进制 |
+| `X-NAgent-Request-ID` | 同 Idempotency-Key | 同上 |
+| `X-AP-Access-Type` | NGAP 承载类型 | `3GPP_ACCESS` |
+| `X-AP-Message-Identity` | UL Cooperation NAS 消息头 | `1` |
+| `X-AP-Container-Type` | AP Container IE 元数据 | `257`（0x0101） |
+| `X-AP-PTI` | AP Container IE 元数据 | `1` |
+| `X-AP-Payload-ID` | AP Container IE 元数据 | `1` |
+
+### AMF 透传的部分
+
+| curl 部分 | 来源 | 说明 |
+|---|---|---|
+| HTTP body | UE NAS AP Container Payload | 原始字节直接转发，不解析、不修改、不校验 |
+
+### 示例 1：组网 / 找我的狗
+
+```bash
+curl --noproxy '*' -v -X POST \
+  'http://192.168.1.10:9100/nagent-intent/v1/intent/imsi-001010000000001' \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Idempotency-Key: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2' \
+  -H 'X-NAgent-Request-ID: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2' \
+  -H 'X-AP-Access-Type: 3GPP_ACCESS' \
+  -H 'X-AP-Message-Identity: 1' \
+  -H 'X-AP-Container-Type: 257' \
+  -H 'X-AP-PTI: 1' \
+  -H 'X-AP-Payload-ID: 1' \
+  -d '{
+    "request_id": "intent-001",
+    "intent_type": "ACN_NETWORKING",
+    "intent_payload": "找我的狗",
+    "source_device": {
+      "device_id": "imsi-001010000000001",
+      "device_type": "UE"
+    },
+    "payload": {}
+  }'
+```
+
+### 示例 2：打开视频 / 共享视野
+
+```bash
+curl --noproxy '*' -v -X POST \
+  'http://192.168.1.10:9100/nagent-intent/v1/intent/imsi-001010000000001' \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'Idempotency-Key: b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3' \
+  -H 'X-NAgent-Request-ID: b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3' \
+  -H 'X-AP-Access-Type: 3GPP_ACCESS' \
+  -H 'X-AP-Message-Identity: 1' \
+  -H 'X-AP-Container-Type: 257' \
+  -H 'X-AP-PTI: 2' \
+  -H 'X-AP-Payload-ID: 2' \
+  -d '{
+    "request_id": "intent-002",
+    "intent_type": "COMPUTING",
+    "intent_payload": "打开视频",
+    "source_device": {
+      "device_id": "imsi-001010000000001",
+      "device_type": "UE"
+    },
+    "payload": {
+      "acn_session_id": "acn-sess-78a3b1"
+    }
+  }'
+```
+
+两条消息的 PTI 和 PayloadID 不同（1→2），模拟 UE 发送了两个不同的 AP Container。Idempotency-Key 也不同（因为 payload 内容不同）。body 内容由 UE 直接构造，AMF 原样透传，不做任何字段适配。

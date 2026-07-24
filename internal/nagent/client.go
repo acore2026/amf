@@ -162,8 +162,8 @@ func (c *Client) submitAttempt(ctx context.Context, request IntentRequest, key s
 	if err != nil {
 		return nil, &Error{Code: ErrorCodeInvalidRequest, Cause: err}
 	}
-	httpRequest.Header.Set("Content-Type", "application/octet-stream")
-	httpRequest.Header.Set("Accept", "application/octet-stream, application/json, */*")
+	httpRequest.Header.Set("Content-Type", "application/json")
+	httpRequest.Header.Set("Accept", "application/json")
 	httpRequest.Header.Set("Idempotency-Key", key)
 	httpRequest.Header.Set(HeaderRequestID, key)
 	httpRequest.Header.Set(HeaderAccessType, request.AccessType)
