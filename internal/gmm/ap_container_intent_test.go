@@ -1058,6 +1058,7 @@ func configureTestAPIntent(
 		ResponseTTL:      time.Minute,
 		MaxInFlightPerUE: 8,
 		Sender:           sender,
+		AgentRoutes:       []nagent.AgentRoute{{Name: "default", Schema: "intent", IntentTypes: []string{"*"}}},
 	})
 	t.Cleanup(func() { configureAPIntentRuntime(apIntentRuntimeConfig{}) })
 }
@@ -1116,7 +1117,8 @@ func testIntentPayload(t *testing.T, description []byte) []byte {
 
 func testAdaptedIntentPayload(t *testing.T, payload []byte, supi string) []byte {
 	t.Helper()
-	adapted, err := nagent.AdaptIntentPayload(payload, supi)
+	routes := []nagent.AgentRoute{{Name: "default", Schema: "intent", IntentTypes: []string{"*"}}}
+	adapted, _, err := nagent.AdaptIntentPayload(payload, supi, routes)
 	if err != nil {
 		t.Fatalf("AdaptIntentPayload() error = %v", err)
 	}

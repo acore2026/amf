@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/acore2026/amf/internal/logger"
+	"github.com/acore2026/amf/internal/nagent"
 	"github.com/acore2026/openapi/models"
 )
 
@@ -403,18 +404,27 @@ type Sbi struct {
 }
 
 type NAgent struct {
-	Enabled             bool       `yaml:"enabled"`
-	BaseURI             string     `yaml:"baseUri,omitempty"`
-	ConnectTimeoutMs    int        `yaml:"connectTimeoutMs,omitempty"`
-	AttemptTimeoutMs    int        `yaml:"attemptTimeoutMs,omitempty"`
-	TotalTimeoutMs      int        `yaml:"totalTimeoutMs,omitempty"`
-	MaxAttempts         int        `yaml:"maxAttempts,omitempty"`
-	MaxPayloadBytes     int        `yaml:"maxPayloadBytes,omitempty"`
-	MaxInFlight         int        `yaml:"maxInFlight,omitempty"`
-	MaxInFlightPerUE    int        `yaml:"maxInFlightPerUe,omitempty"`
-	QueueSize           int        `yaml:"queueSize,omitempty"`
-	PendingDLTTLSeconds int        `yaml:"pendingDlTtlSeconds,omitempty"`
-	Mock                NAgentMock `yaml:"mock,omitempty"`
+	Enabled             bool           `yaml:"enabled"`
+	BaseURI             string         `yaml:"baseUri,omitempty"`
+	Routes              []NAgentRoute  `yaml:"routes,omitempty"`
+	ConnectTimeoutMs    int            `yaml:"connectTimeoutMs,omitempty"`
+	AttemptTimeoutMs    int            `yaml:"attemptTimeoutMs,omitempty"`
+	TotalTimeoutMs      int            `yaml:"totalTimeoutMs,omitempty"`
+	MaxAttempts         int            `yaml:"maxAttempts,omitempty"`
+	MaxPayloadBytes     int            `yaml:"maxPayloadBytes,omitempty"`
+	MaxInFlight         int            `yaml:"maxInFlight,omitempty"`
+	MaxInFlightPerUE    int            `yaml:"maxInFlightPerUe,omitempty"`
+	QueueSize           int            `yaml:"queueSize,omitempty"`
+	PendingDLTTLSeconds int            `yaml:"pendingDlTtlSeconds,omitempty"`
+	Mock                NAgentMock     `yaml:"mock,omitempty"`
+}
+
+type NAgentRoute struct {
+	Name        string   `yaml:"name"`
+	BaseURI     string   `yaml:"baseUri"`
+	Path       string   `yaml:"path"`
+	IntentTypes []string `yaml:"intentTypes"`
+	Schema      string   `yaml:"schema"`
 }
 
 type NAgentMock struct {
@@ -1178,4 +1188,44 @@ func (c *Config) GetNAgentConfig() NAgent {
 		return (&NAgent{}).withDefaults()
 	}
 	return c.Configuration.NAgent.withDefaults()
+}
+
+func (c *Config) GetNAgentRoutes() []nagent.AgentRoute {
+	if c == nil || c.Configuration == nil || c.Configuration.NAgent == nil {
+		return nil
+	}
+	cfg := c.Configuration.NAgent.withDefaults()
+	var routes []nagent.AgentRoute
+	if len(cfg.Routes) == 0 {
+		routes = append(routes, nagent.AgentRoute{
+			Name:    "default",
+			BaseURI: cfg.BaseURI,
+			Path:    "/nagent-intent/v1/intent/{supi}",
+			Schema:  "intent",
+			IntentTypes: []string{"*"},
+		})
+		return routes
+	}
+	for _, r := range cfg.Routes {
+		baseURI := strings.TrimRight(r.BaseURI, "")
+		if baseURI == "" {
+			baseURI = cfg.BaseURI
+		}
+		path := r.Path
+		if path == "" {
+			path = "/nagent-intent/v1/intent/{supi}"
+		}
+		schema := r.Schema
+		if schema == "" {
+			schema = "intent"
+		}
+		routes = append(routes, nagent.AgentRoute{
+			Name:        r.Name,
+			BaseURI:     baseURI,
+			Path:        path,
+			Schema:      schema,
+			IntentTypes: r.IntentTypes,
+		})
+	}
+	return routes
 }

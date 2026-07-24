@@ -77,8 +77,9 @@ func TestValidateIntentRequestBodyRejectsInvalidIntent(t *testing.T) {
 func TestAdaptIntentPayloadAddsAgentFields(t *testing.T) {
 	payload := []byte(`{"intentId":"intent-001","issuer":"ue","intentPriority":10,"intentType":"location","intentDescription":"desc","object":"obj","constraint":"c","target":"t"}`)
 	supi := "imsi-001010000000001"
+	routes := []AgentRoute{{Name: "default", Schema: "intent", IntentTypes: []string{"*"}}}
 
-	adapted, err := AdaptIntentPayload(payload, supi)
+	adapted, route, err := AdaptIntentPayload(payload, supi, routes)
 	if err != nil {
 		t.Fatalf("AdaptIntentPayload() error = %v", err)
 	}
@@ -97,6 +98,9 @@ func TestAdaptIntentPayloadAddsAgentFields(t *testing.T) {
 	if fields["intent_payload"] != "desc" {
 		t.Fatalf("intent_payload = %v, want desc", fields["intent_payload"])
 	}
+	if route == nil || route.Schema != "intent" {
+		t.Fatalf("route = %v, want schema=intent", route)
+	}
 	sd, ok := fields["source_device"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("source_device = %v, want object", fields["source_device"])
@@ -112,8 +116,9 @@ func TestAdaptIntentPayloadAddsAgentFields(t *testing.T) {
 func TestAdaptIntentPayloadPreservesExistingAgentFields(t *testing.T) {
 	payload := []byte(`{"intentId":"intent-001","issuer":"ue","intentPriority":10,"intentType":"location","intentDescription":"desc","object":"obj","constraint":"c","target":"t","request_id":"custom-req","intent_type":"custom-type","source_device":{"device_id":"dev1","device_type":"gNB"},"intent_payload":"custom-payload"}`)
 	supi := "imsi-001010000000001"
+	routes := []AgentRoute{{Name: "default", Schema: "intent", IntentTypes: []string{"*"}}}
 
-	adapted, err := AdaptIntentPayload(payload, supi)
+	adapted, _, err := AdaptIntentPayload(payload, supi, routes)
 	if err != nil {
 		t.Fatalf("AdaptIntentPayload() error = %v", err)
 	}
@@ -141,8 +146,9 @@ func TestAdaptIntentPayloadPreservesExistingAgentFields(t *testing.T) {
 func TestAdaptIntentPayloadDoesNotAddIntentPayloadWhenIntentExists(t *testing.T) {
 	payload := []byte(`{"intentId":"intent-001","issuer":"ue","intentPriority":10,"intentType":"location","intentDescription":"desc","object":"obj","constraint":"c","target":"t","intent":"custom-intent"}`)
 	supi := "imsi-001010000000001"
+	routes := []AgentRoute{{Name: "default", Schema: "intent", IntentTypes: []string{"*"}}}
 
-	adapted, err := AdaptIntentPayload(payload, supi)
+	adapted, _, err := AdaptIntentPayload(payload, supi, routes)
 	if err != nil {
 		t.Fatalf("AdaptIntentPayload() error = %v", err)
 	}
@@ -161,9 +167,54 @@ func TestAdaptIntentPayloadDoesNotAddIntentPayloadWhenIntentExists(t *testing.T)
 }
 
 func TestAdaptIntentPayloadRejectsInvalidJSON(t *testing.T) {
-	_, err := AdaptIntentPayload([]byte(`{invalid`), "imsi-001")
+	_, _, err := AdaptIntentPayload([]byte(`{invalid`), "imsi-001", nil)
 	var intentError *Error
 	if !errors.As(err, &intentError) || intentError.Code != ErrorCodeInvalidJSON {
 		t.Fatalf("error = %v, want code %s", err, ErrorCodeInvalidJSON)
+	}
+}
+
+func TestAdaptIntentPayloadVoiceSchema(t *testing.T) {
+	payload := []byte(`{"intentId":"intent-003","issuer":"ue","intentPriority":5,"intentType":"VOICE_COMMAND","intentDescription":"寻找小兔子","object":"voice","constraint":"","target":"agent","acn_session_id":"acn-sess-78a3b1","computing_session_id":"comp-sess-c5eeacda291e"}`)
+	supi := "imsi-001010000000001"
+	routes := []AgentRoute{
+		{Name: "intent", Schema: "intent", IntentTypes: []string{"ACN_NETWORKING", "COMPUTING"}},
+		{Name: "voice", BaseURI: "http://192.168.1.10:8787", Path: "/api/v1/voice", Schema: "voice", IntentTypes: []string{"VOICE_COMMAND"}},
+	}
+
+	adapted, route, err := AdaptIntentPayload(payload, supi, routes)
+	if err != nil {
+		t.Fatalf("AdaptIntentPayload() error = %v", err)
+	}
+
+	if route == nil || route.Name != "voice" || route.Schema != "voice" {
+		t.Fatalf("route = %v, want voice/voice", route)
+	}
+
+	var fields map[string]interface{}
+	if err := json.Unmarshal(adapted, &fields); err != nil {
+		t.Fatalf("Adapted payload is not valid JSON: %v", err)
+	}
+
+	if fields["request_id"] != "intent-003" {
+		t.Fatalf("request_id = %v, want intent-003", fields["request_id"])
+	}
+	if fields["action"] != "VOICE_COMMAND" {
+		t.Fatalf("action = %v, want VOICE_COMMAND", fields["action"])
+	}
+	if fields["intent_payload"] != "寻找小兔子" {
+		t.Fatalf("intent_payload = %v, want 寻找小兔子", fields["intent_payload"])
+	}
+	if fields["ui_language"] != "zh" {
+		t.Fatalf("ui_language = %v, want zh", fields["ui_language"])
+	}
+	if _, ok := fields["source_device"]; ok {
+		t.Fatalf("source_device should not be added for voice schema")
+	}
+	if _, ok := fields["intent_type"]; ok {
+		t.Fatalf("intent_type should not be added for voice schema")
+	}
+	if fields["acn_session_id"] != "acn-sess-78a3b1" {
+		t.Fatalf("acn_session_id = %v, want acn-sess-78a3b1", fields["acn_session_id"])
 	}
 }

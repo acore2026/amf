@@ -288,7 +288,13 @@ intentPriority 必须是整数
 
 校验失败时不会提交 HTTP 请求，AMF 会生成 NAgent 错误 JSON，并用 DL AP Container 返回给 UE。
 
-校验通过后，AMF 会对 payload 做适配（`AdaptIntentPayload`），在转发前补充外部 NAgent 所需的字段：
+校验通过后，AMF 会对 payload 做适配（`AdaptIntentPayload`），根据 `intentType` 值匹配路由规则，选择目标 agent 和对应的 schema 适配：
+
+### 路由匹配
+
+AMF 配置 `nagent.routes` 列表，每条路由包含 `name`、`baseUri`、`path`、`schema`、`intentTypes`。`AdaptIntentPayload` 读取 payload 中的 `intentType` 值，在路由列表中找到第一个匹配的路由。匹配不到时使用默认 `intent` schema。
+
+### intent schema（Agent 1，端口 9100）
 
 ```text
 request_id     若不存在，从 intentId 映射
@@ -297,7 +303,18 @@ source_device  若不存在，填入 {"device_id": <SUPI>, "device_type": "UE"}
 intent_payload 若不存在且 intent 也不存在，从 intentDescription 映射
 ```
 
-如果 payload 中已经包含这些字段，AMF 不会覆盖。适配后的 payload 才是实际发送给 NAgent 的 HTTP body。
+### voice schema（Agent 2，端口 8787）
+
+```text
+request_id     若不存在，从 intentId 映射
+action         若不存在，从 intentType 映射
+intent_payload 若不存在，从 intentDescription 映射
+ui_language    若不存在，填入 "zh"
+```
+
+voice schema 不添加 `source_device` 和 `intent_type`。`acn_session_id` 和 `computing_session_id` 由 UE 在 payload 中携带（作为额外字段），AMF 透传。
+
+如果 payload 中已经包含这些字段，AMF 不会覆盖。适配后的 payload 和路由信息一起传递给 HTTP client，由 Router 选择对应的 agent client 发送。
 
 ## 8. HTTP 请求格式
 

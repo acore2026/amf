@@ -53,13 +53,8 @@ type apIntentRuntimeConfig struct {
 	ResponseTTL        time.Duration
 	MaxInFlightPerUE   int
 	Sender             apIntentResponseSender
+	AgentRoutes        []nagent.AgentRoute
 }
-
-var apIntentRuntime = struct {
-	sync.RWMutex
-	config         apIntentRuntimeConfig
-	nextGeneration uint64
-}{}
 
 func ConfigureAPIntentIntegration(
 	enabled bool,
@@ -68,6 +63,7 @@ func ConfigureAPIntentIntegration(
 	requestTimeout time.Duration,
 	responseTTL time.Duration,
 	maxInFlightPerUE int,
+	agentRoutes []nagent.AgentRoute,
 ) {
 	configureAPIntentRuntime(apIntentRuntimeConfig{
 		Enabled:            enabled,
@@ -77,8 +73,15 @@ func ConfigureAPIntentIntegration(
 		ResponseTTL:        responseTTL,
 		MaxInFlightPerUE:   maxInFlightPerUE,
 		Sender:             deliverAPIntentResponse,
+		AgentRoutes:        agentRoutes,
 	})
 }
+
+var apIntentRuntime = struct {
+	sync.RWMutex
+	config         apIntentRuntimeConfig
+	nextGeneration uint64
+}{}
 
 func configureAPIntentRuntime(config apIntentRuntimeConfig) {
 	if config.RequestTimeout <= 0 {
@@ -148,12 +151,13 @@ func processCompletedAPIntent(
 		code, retryable, httpStatus := apIntentErrorDetails(err)
 		return buildImmediateAPIntentError(ordinary, request, code, retryable, httpStatus)
 	}
-	adaptedBody, err := nagent.AdaptIntentPayload(intentBody, ue.Supi)
+	adaptedBody, route, err := nagent.AdaptIntentPayload(intentBody, ue.Supi, runtime.AgentRoutes)
 	if err != nil {
 		code, retryable, httpStatus := apIntentErrorDetails(err)
 		return buildImmediateAPIntentError(ordinary, request, code, retryable, httpStatus)
 	}
 	requestForHTTP.Payload = adaptedBody
+	requestForHTTP.Route = route
 	request.HTTPRequestID = nagent.IdempotencyKey(requestForHTTP)
 	begin, transaction := ue.GetOrCreateCooperationContext().BeginAPIntentWithLimit(
 		request, time.Now(), runtime.MaxInFlightPerUE,
