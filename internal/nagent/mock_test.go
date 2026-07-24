@@ -8,11 +8,11 @@ import (
 	"testing"
 )
 
-func TestMockHandlerEchoesValidJSON(t *testing.T) {
-	payload := `{"intent":"locate"}`
+func TestMockHandlerEchoesOpaquePayload(t *testing.T) {
+	payload := "\x00\x01opaque"
 	request := httptest.NewRequest(http.MethodPost,
 		"/nagent-intent/v1/intent/imsi-001010000000001", strings.NewReader(payload))
-	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Content-Type", "application/octet-stream")
 	recorder := httptest.NewRecorder()
 
 	NewMockHandler(MockConfig{}).ServeHTTP(recorder, request)
@@ -34,12 +34,11 @@ func TestMockHandlerRejectsInvalidRequests(t *testing.T) {
 	}{
 		{name: "method", method: http.MethodGet, path: "/nagent-intent/v1/intent/supi", body: `{}`, status: 405},
 		{name: "path", method: http.MethodPost, path: "/wrong", body: `{}`, status: 404},
-		{name: "JSON", method: http.MethodPost, path: "/nagent-intent/v1/intent/supi", body: `{"bad"`, status: 400},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			request := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
-			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Content-Type", "application/octet-stream")
 			recorder := httptest.NewRecorder()
 			NewMockHandler(MockConfig{}).ServeHTTP(recorder, request)
 			if recorder.Code != tt.status {

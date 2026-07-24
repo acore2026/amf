@@ -4,9 +4,9 @@
 
 ## 1. 功能概览
 
-新增流程由 UE 或 NAS 代理主动发起。UE 完成注册并建立 NAS security context 后，发送一条受保护的 UL Cooperation NAS message。AMF 解密后解析其中的独立 TLV IE，并在 AP Container IE `0x71` 重组完成后，把 AP payload 作为 Intent HTTP body 转发到 NAgent。
+新增流程由 UE 或 NAS 代理主动发起。UE 完成注册并建立 NAS security context 后，发送一条受保护的 UL Cooperation NAS message。AMF 解密后解析其中的独立 TLV IE，并在 AP Container IE `0x71` 重组完成后，把 AP payload 作为不透明 HTTP body 转发到 NAgent。
 
-NAgent 返回 HTTP 响应后，AMF 将 HTTP response body 封装进 DL AP Container，通过 DL Cooperation NAS message 下发给 UE。AMF 不会在 HTTP 响应前提前下发 DL AP Container；当前总等待截止时间默认为 3 秒。收到 HTTP 响应或等待超时后，AMF 才生成 DL Cooperation。
+创建事务后，AMF 会先下发一条 ACK DL Cooperation，告知 UE 请求已被接受。NAgent 返回 HTTP 响应后，AMF 将 HTTP response body 封装进最终 DL AP Container，通过 DL Cooperation NAS message 下发给 UE。AMF 不会在 HTTP 响应前提前下发最终 NAgent 响应；当前总等待截止时间默认为 3 秒。收到 HTTP 响应或等待超时后，AMF 才生成最终 DL Cooperation。
 
 核心消息和 IE：
 
@@ -17,20 +17,7 @@ AP Container IEI                = 0x71
 Intent ContainerType            = 0x0101
 ```
 
-当前 NAgent Intent 载荷要求是 JSON：
-
-```ts
-interface Intent {
-  intentId: string;
-  issuer: string;
-  intentPriority: number;
-  intentType: string;
-  intentDescription: string;
-  object: string;
-  constraint: string;
-  target: string;
-}
-```
+AP payload 对 AMF 是不透明字节序列，可以是 JSON、文本、二进制或未来自定义格式。AMF 不校验 payload 内部结构，也不补充或改写字段。
 
 ## 2. 总体流程
 
@@ -63,7 +50,7 @@ sequenceDiagram
         GMM-->>UE: No DL Cooperation yet
     else AP payload complete
         CTX-->>GMM: Complete AP Container
-        GMM->>GMM: Validate full Intent JSON
+        GMM->>GMM: Treat AP payload as opaque bytes
         GMM->>CTX: Create AP Intent transaction
         GMM->>NAS: Build DL Cooperation 0xe2 (ACK)
         NAS->>RAN: DownlinkNASTransport
@@ -72,7 +59,7 @@ sequenceDiagram
         HTTP->>NAgent: POST /nagent-intent/v1/intent/{supi}<br/>Body = AP payload
 
         alt HTTP response within deadline
-            NAgent-->>HTTP: HTTP JSON response
+            NAgent-->>HTTP: HTTP response body
             HTTP-->>GMM: Result
         else timeout or HTTP failure
             HTTP-->>GMM: Error result
@@ -189,7 +176,7 @@ FragmentOffset
   当前分片 Payload 在完整 Payload 中的字节偏移。
 
 Payload
-  应用层载荷。ContainerType=0x0101 时，UL 方向为完整 Intent JSON。
+  应用层载荷。ContainerType=0x0101 时，AMF 将其作为不透明字节透传给 NAgent。
 ```
 
 Flags：
@@ -257,64 +244,21 @@ Payload bytes
 复用策略: 循环递增，跳过仍在等待的 PTI
 ```
 
-## 7. UL Intent 请求格式
+## 7. UL AP Payload 透传
 
-当 `ContainerType=0x0101` 时，UL AP Container payload 必须是完整 Intent JSON，并且 HTTP body 直接复用该 payload 的原始字节。
+当 `ContainerType=0x0101` 时，UL AP Container payload 被 AMF 视为不透明字节序列。AMF 不解析 payload 的 JSON 结构，不校验内部字段，也不补充或改写字段。
 
-示例 Intent：
-
-```json
-{
-  "intentId": "intent-001",
-  "issuer": "ue",
-  "intentPriority": 10,
-  "intentType": "location",
-  "intentDescription": "Locate the target UE",
-  "object": "ue-location",
-  "constraint": "accuracy<100m",
-  "target": "imsi-001010000000002"
-}
-```
-
-AMF 校验规则：
+当前 AMF 只负责：
 
 ```text
-必须是合法 JSON
-必须是完整 Intent 对象（8 个必填字段全部存在）
-允许携带额外字段（不拒绝未知字段）
-intentPriority 必须是整数
-所有必填字段必须存在
+校验 AP Container 外层编码和分片字段
+重组完整 AP payload
+保存 PTI / PayloadId / MessageIdentity / AccessType 等关联元数据
+将完整 AP payload 原样作为 HTTP body 转发给 NAgent
+将 NAgent 响应 body 原样放入 DL AP Container
 ```
 
-校验失败时不会提交 HTTP 请求，AMF 会生成 NAgent 错误 JSON，并用 DL AP Container 返回给 UE。
-
-校验通过后，AMF 会对 payload 做适配（`AdaptIntentPayload`），根据 `intentType` 值匹配路由规则，选择目标 agent 和对应的 schema 适配：
-
-### 路由匹配
-
-AMF 配置 `nagent.routes` 列表，每条路由包含 `name`、`baseUri`、`path`、`schema`、`intentTypes`。`AdaptIntentPayload` 读取 payload 中的 `intentType` 值，在路由列表中找到第一个匹配的路由。匹配不到时使用默认 `intent` schema。
-
-### intent schema（Agent 1，端口 9100）
-
-```text
-request_id     若不存在，从 intentId 映射
-intent_type    若不存在，从 intentType 映射
-source_device  若不存在，填入 {"device_id": <SUPI>, "device_type": "UE"}
-intent_payload 若不存在且 intent 也不存在，从 intentDescription 映射
-```
-
-### voice schema（Agent 2，端口 8787）
-
-```text
-request_id     若不存在，从 intentId 映射
-action         若不存在，从 intentType 映射
-intent_payload 若不存在，从 intentDescription 映射
-ui_language    若不存在，填入 "zh"
-```
-
-voice schema 不添加 `source_device` 和 `intent_type`。`acn_session_id` 和 `computing_session_id` 由 UE 在 payload 中携带（作为额外字段），AMF 透传。
-
-如果 payload 中已经包含这些字段，AMF 不会覆盖。适配后的 payload 和路由信息一起传递给 HTTP client，由 Router 选择对应的 agent client 发送。
+因此 UE 可以发送 JSON、文本、二进制或未来自定义格式。格式语义由 UE/NAS 代理和 NAgent 自行约定，AMF 不参与解释。
 
 ## 8. HTTP 请求格式
 
@@ -322,8 +266,8 @@ AMF 对 NAgent 使用 HTTP POST：
 
 ```text
 POST /nagent-intent/v1/intent/{supi}
-Content-Type: application/json
-Accept: application/json
+Content-Type: application/octet-stream
+Accept: application/octet-stream, application/json, */*
 Idempotency-Key: <request fingerprint hex>
 X-NAgent-Request-ID: <same as Idempotency-Key>
 X-AP-Access-Type: <3GPP_ACCESS or NON_3GPP_ACCESS>
@@ -332,15 +276,15 @@ X-AP-Container-Type: <decimal>
 X-AP-PTI: <decimal>
 X-AP-Payload-ID: <decimal>
 
-<适配后的 payload，包含原始 Intent 字段 + request_id / intent_type / source_device / intent_payload>
+<exact reassembled UL AP Container payload bytes>
 ```
 
-示例（UL AP Container Payload 为原始 Intent JSON，AMF 适配后追加4个 agent 字段）：
+示例（UL AP Container Payload 是 JSON 时也只做原样透传）：
 
 ```http
 POST /nagent-intent/v1/intent/imsi-001010000000001 HTTP/1.1
-Content-Type: application/json
-Accept: application/json
+Content-Type: application/octet-stream
+Accept: application/octet-stream, application/json, */*
 Idempotency-Key: 6b3f...
 X-NAgent-Request-ID: 6b3f...
 X-AP-Access-Type: 3GPP_ACCESS
@@ -349,7 +293,7 @@ X-AP-Container-Type: 257
 X-AP-PTI: 42
 X-AP-Payload-ID: 4660
 
-{"intentId":"intent-001","issuer":"ue","intentPriority":10,"intentType":"location","intentDescription":"Locate the target UE","object":"ue-location","constraint":"accuracy<100m","target":"imsi-001010000000002","request_id":"intent-001","intent_type":"location","source_device":{"device_id":"imsi-001010000000001","device_type":"UE"},"intent_payload":"Locate the target UE"}
+{"intent":"Locate the target UE"}
 ```
 
 注意：
@@ -357,8 +301,8 @@ X-AP-Payload-ID: 4660
 ```text
 0x0101 的十进制 HTTP header 表示是 257
 0x1234 的十进制 HTTP header 表示是 4660
-HTTP body 中的 request_id / intent_type / source_device / intent_payload 由 AMF 自动补填
-source_device 为对象格式，包含 device_id（SUPI）和 device_type（"UE"）
+HTTP body 与重组后的 UL AP Container payload 完全一致
+AMF 不保证 HTTP body 是 JSON，也不校验其中字段
 ```
 
 ## 9. HTTP 响应处理
@@ -367,12 +311,10 @@ NAgent 成功响应要求：
 
 ```text
 HTTP status: 200
-Content-Type: application/json
-Body: 合法 JSON
 Body size <= maxPayloadBytes
 ```
 
-HTTP response body 被视为不透明 JSON 结果。AMF 不从 response body 解析 PTI，也不要求 body 内携带 PTI。AMF 通过本地 transaction 和 HTTP request ID 恢复原 UL PTI。
+HTTP response body 被视为不透明字节序列。AMF 不从 response body 解析 PTI，也不要求 body 内携带 PTI。AMF 通过本地 transaction 和 HTTP request ID 恢复原 UL PTI。
 
 如果响应携带下列 header，AMF 会校验它们和原请求一致：
 
@@ -391,7 +333,6 @@ X-AP-Payload-ID
 
 ```text
 接收 POST /nagent-intent/v1/intent/{supi}
-校验 body 是 JSON
 原样返回 request body
 回显上述 X-* 关联 header
 ```
@@ -437,7 +378,7 @@ ACK:
 
 ```text
 UE --UL Cooperation(AP Container)--> AMF
-                                     AMF: 分片重组 → Intent JSON 校验 → 创建事务
+                                     AMF: 分片重组 → opaque payload 透传准备 → 创建事务
   UE <--DL Cooperation(ACK)--> AMF       Payload: {"$nagent":{"version":1,"status":"accepted"}}
                                      AMF: → HTTP POST NAgent
                                      ... NAgent 处理（mock 默认延迟 8 秒）...
@@ -455,7 +396,7 @@ ACK 发送失败（如 RanUe 不可用）不会阻塞 NAgent 转发流程，AMF 
 totalTimeoutMs: 3000
 ```
 
-AMF 不会在 HTTP 完成前下发 DL AP Container。达到 3 秒截止时间后，AMF 生成错误 JSON payload 并下发。
+AMF 会在 HTTP 完成前下发 ACK DL AP Container，但不会提前下发最终 NAgent 响应。达到 3 秒截止时间后，AMF 生成错误 JSON payload 作为最终 DL AP Container 下发。
 
 错误 payload 格式：
 
@@ -475,12 +416,12 @@ AMF 不会在 HTTP 完成前下发 DL AP Container。达到 3 秒截止时间后
 常见错误码：
 
 ```text
-NAGENT_INVALID_JSON       UL Intent payload 不是合法 JSON
-NAGENT_INVALID_REQUEST    UL Intent payload 字段不符合要求
+NAGENT_INVALID_JSON       保留错误码；当前透传流程不会因 UL payload 非 JSON 触发
+NAGENT_INVALID_REQUEST    请求元数据或 HTTP 请求构造失败
 NAGENT_PAYLOAD_TOO_LARGE  请求或响应超过配置上限
 NAGENT_TIMEOUT            HTTP 总等待超时
 NAGENT_REJECTED           NAgent 返回非 200 且不属于可重试状态
-NAGENT_INVALID_RESPONSE   NAgent 响应不是合法 JSON 或关联 header 不匹配
+NAGENT_INVALID_RESPONSE   NAgent 响应关联 header 不匹配
 NAGENT_RESPONSE_TOO_LARGE NAgent 响应过大
 NAGENT_UNAVAILABLE        HTTP client、dispatcher 或 mock 不可用
 PAYLOAD_ID_CONFLICT       同一 PayloadId 存在不同请求内容
@@ -652,25 +593,25 @@ PTI              = 0x2a
 PayloadId        = 0x1234
 Flags            = 0x02, DF=1, MF=0
 FragmentOffset   = 0
-Payload          = 完整 Intent JSON
+Payload          = 透传 AP payload
 ```
 
-Intent JSON：
+示例 AP Payload：
 
-```json
-{"intentId":"intent-001","issuer":"ue","intentPriority":10,"intentType":"location","intentDescription":"Locate the target UE","object":"ue-location","constraint":"accuracy<100m","target":"imsi-001010000000002"}
+```text
+{"intent":"Locate the target UE"}
 ```
 
 AP Container Value：
 
 ```text
 01 01        ContainerType = 0x0101
-00 d8        ContainerContentLength = 216 = 6 + 210
+00 27        ContainerContentLength = 39 = 6 + 33
 2a           PTI
 12 34        PayloadId
 02           Flags = DF
 00 00        FragmentOffset
-7b ... 7d    Payload JSON, 210 bytes
+7b ... 7d    Payload bytes, 33 bytes
 ```
 
 UL Cooperation plain NAS：
@@ -678,22 +619,11 @@ UL Cooperation plain NAS：
 ```text
 7e 00 e1 01
 10 01 01
-71 dc
-01 01 00 d8 2a 12 34 02 00 00
-7b 22 69 6e 74 65 6e 74 49 64 22 3a 22 69 6e 74
-65 6e 74 2d 30 30 31 22 2c 22 69 73 73 75 65 72
-22 3a 22 75 65 22 2c 22 69 6e 74 65 6e 74 50 72
-69 6f 72 69 74 79 22 3a 31 30 2c 22 69 6e 74 65
-6e 74 54 79 70 65 22 3a 22 6c 6f 63 61 74 69 6f
-6e 22 2c 22 69 6e 74 65 6e 74 44 65 73 63 72 69
-70 74 69 6f 6e 22 3a 22 4c 6f 63 61 74 65 20 74
-68 65 20 74 61 72 67 65 74 20 55 45 22 2c 22 6f
-62 6a 65 63 74 22 3a 22 75 65 2d 6c 6f 63 61 74
-69 6f 6e 22 2c 22 63 6f 6e 73 74 72 61 69 6e 74
-22 3a 22 61 63 63 75 72 61 63 79 3c 31 30 30 6d
-22 2c 22 74 61 72 67 65 74 22 3a 22 69 6d 73 69
-2d 30 30 31 30 31 30 30 30 30 30 30 30 30 30 30
-30 32 22 7d
+71 2b
+01 01 00 27 2a 12 34 02 00 00
+7b 22 69 6e 74 65 6e 74 22 3a 22 4c 6f 63 61 74
+65 20 74 68 65 20 74 61 72 67 65 74 20 55 45 22
+7d
 ```
 
 说明：
@@ -701,7 +631,7 @@ UL Cooperation plain NAS：
 ```text
 7e 00 e1 01     UL Cooperation header
 10 01 01        ordinary IE 0x10
-71 dc           AP Container IEI + outer length, 220 bytes
+71 2b           AP Container IEI + outer length, 43 bytes
 01 01 ...       AP Container value
 ```
 
@@ -713,8 +643,8 @@ AMF 转发的 HTTP body 与上面的 AP payload 完全一致：
 
 ```http
 POST /nagent-intent/v1/intent/imsi-001010000000001 HTTP/1.1
-Content-Type: application/json
-Accept: application/json
+Content-Type: application/octet-stream
+Accept: application/octet-stream, application/json, */*
 Idempotency-Key: <sha256 fingerprint>
 X-NAgent-Request-ID: <sha256 fingerprint>
 X-AP-Access-Type: 3GPP_ACCESS
@@ -723,7 +653,7 @@ X-AP-Container-Type: 257
 X-AP-PTI: 42
 X-AP-Payload-ID: 4660
 
-{"intentId":"intent-001","issuer":"ue","intentPriority":10,"intentType":"location","intentDescription":"Locate the target UE","object":"ue-location","constraint":"accuracy<100m","target":"imsi-001010000000002"}
+{"intent":"Locate the target UE"}
 ```
 
 ### 15.3 NAgent HTTP response
@@ -732,7 +662,7 @@ mock NAgent 示例响应：
 
 ```http
 HTTP/1.1 200 OK
-Content-Type: application/json
+Content-Type: application/octet-stream
 X-NAgent-Request-ID: <same as request>
 X-AP-Access-Type: 3GPP_ACCESS
 X-AP-Message-Identity: 1
@@ -740,10 +670,10 @@ X-AP-Container-Type: 257
 X-AP-PTI: 42
 X-AP-Payload-ID: 4660
 
-{"intentId":"intent-001","issuer":"ue","intentPriority":10,"intentType":"location","intentDescription":"Locate the target UE","object":"ue-location","constraint":"accuracy<100m","target":"imsi-001010000000002"}
+{"intent":"Locate the target UE"}
 ```
 
-真实 NAgent 可以返回其他合法 JSON。AMF 会把 response body 原样放进 DL AP Container。
+真实 NAgent 可以返回 JSON、文本或二进制结果。AMF 会把 response body 原样放进 DL AP Container。
 
 ### 15.4 DL Cooperation ACK（新增）
 
@@ -789,14 +719,14 @@ AP Container 解析：
 
 ### 15.5 DL Cooperation plain NAS
 
-如果 response body 仍为 210 字节，DL AP Container 可以单片发送：
+如果 response body 为 210 字节，DL AP Container 可以单片发送；这 210 字节可以是任意不透明 payload：
 
 ```text
 7e 00 e2 01
 10 01 01
 71 dc
 01 01 00 d8 2a 12 34 00 00 00
-<210 bytes response JSON>
+<210 bytes response payload>
 ```
 
 DL AP header：
@@ -825,7 +755,7 @@ internal/gmm/ap_container_reassembly.go
   UL AP Container 分片重组
 
 internal/gmm/ap_container_intent.go
-  Intent 校验、HTTP 事务、DL AP Container 生成和投递
+  HTTP 事务、ACK、DL AP Container 生成和投递
 
 internal/context/ap_container.go
 internal/context/ap_intent.go
@@ -833,9 +763,6 @@ internal/context/ap_intent.go
 
 internal/nagent/client.go
   HTTP client、header、idempotency key、响应关联校验
-
-internal/nagent/intent.go
-  Intent JSON wire validation
 
 internal/nagent/mock.go
 pkg/service/nagent_mock.go
@@ -860,4 +787,4 @@ internal/ngap/scheduler.go
 
 UE 或 NAS 代理必须主动发送 UL Cooperation，AMF 才会触发 NAgent 流程。
 
-兼容性说明：协议约定 Intent 使用 `ContainerType=0x0101`。当前 AMF 实现的 NAgent 入口以“AP payload 是否是完整 Intent JSON”为实际触发条件，并不会在 UL 方向强制拒绝其它 `ContainerType`；但 DL 响应和错误始终使用 `ContainerType=0x0101`。
+兼容性说明：协议约定 Intent 使用 `ContainerType=0x0101`。当前 AMF 实现不解析 AP payload 内部语义；DL 响应和错误始终使用 `ContainerType=0x0101`。

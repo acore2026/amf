@@ -14,8 +14,8 @@ import (
 	"time"
 )
 
-func TestClientSubmitIntentEchoesJSONAndSetsHeaders(t *testing.T) {
-	payload := []byte(`{"intent":"locate","target":"cell-1"}`)
+func TestClientSubmitIntentEchoesOpaquePayloadAndSetsHeaders(t *testing.T) {
+	payload := []byte{0x00, 0x01, 0xff, 'a', 'p'}
 	var gotKey string
 	gotHeaders := make(http.Header)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -25,8 +25,11 @@ func TestClientSubmitIntentEchoesJSONAndSetsHeaders(t *testing.T) {
 		if r.URL.Path != "/nagent-intent/v1/intent/imsi-001010000000001" {
 			t.Errorf("path = %s", r.URL.Path)
 		}
-		if got := r.Header.Get("Content-Type"); got != "application/json" {
+		if got := r.Header.Get("Content-Type"); got != "application/octet-stream" {
 			t.Errorf("Content-Type = %q", got)
+		}
+		if got := r.Header.Get("Accept"); got == "" {
+			t.Error("Accept header is empty")
 		}
 		gotKey = r.Header.Get("Idempotency-Key")
 		for _, name := range []string{
@@ -44,7 +47,7 @@ func TestClientSubmitIntentEchoesJSONAndSetsHeaders(t *testing.T) {
 		if err != nil {
 			t.Errorf("ReadAll() error = %v", err)
 		}
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/octet-stream")
 		_, _ = w.Write(body)
 	}))
 	defer server.Close()
@@ -81,10 +84,10 @@ func TestClientSubmitIntentEchoesJSONAndSetsHeaders(t *testing.T) {
 
 func TestClientRejectsMismatchedResponseCorrelation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set(HeaderRequestID, r.Header.Get(HeaderRequestID))
 		w.Header().Set(HeaderPTI, "6")
-		_, _ = w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte("ok"))
 	}))
 	defer server.Close()
 
@@ -126,8 +129,8 @@ func TestClientRetriesRetryableStatusWithStableKey(t *testing.T) {
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true}`))
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write([]byte("ok"))
 	}))
 	defer server.Close()
 
@@ -136,7 +139,7 @@ func TestClientRetriesRetryableStatusWithStableKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SubmitIntent() error = %v", err)
 	}
-	if string(response) != `{"ok":true}` || attempts.Load() != 3 {
+	if string(response) != "ok" || attempts.Load() != 3 {
 		t.Fatalf("response=%s attempts=%d", response, attempts.Load())
 	}
 	if keys[0] == "" || keys[0] != keys[1] || keys[1] != keys[2] {
@@ -159,7 +162,7 @@ func TestClientDoesNotRetryPermanentHTTPError(t *testing.T) {
 	}
 }
 
-func TestClientRejectsInvalidRequestBeforeHTTP(t *testing.T) {
+func TestClientRejectsOversizedRequestBeforeHTTP(t *testing.T) {
 	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		attempts.Add(1)
@@ -167,28 +170,29 @@ func TestClientRejectsInvalidRequestBeforeHTTP(t *testing.T) {
 	defer server.Close()
 
 	request := validIntentRequest()
-	request.Payload = []byte(`{"broken"`)
-	_, err := newTestClient(server.URL).SubmitIntent(context.Background(), request)
-	assertIntentError(t, err, ErrorCodeInvalidJSON, false)
+	request.Payload = []byte(strings.Repeat("x", 128))
+	client := newTestClient(server.URL)
+	client.maxPayloadBytes = 64
+	_, err := client.SubmitIntent(context.Background(), request)
+	assertIntentError(t, err, ErrorCodePayloadTooLarge, false)
 	if attempts.Load() != 0 {
 		t.Fatalf("attempts = %d, want 0", attempts.Load())
 	}
 }
 
-func TestClientRejectsInvalidOrOversizedResponse(t *testing.T) {
+func TestClientRejectsOversizedResponse(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
 		code string
 	}{
-		{name: "invalid JSON", body: `{"broken"`, code: ErrorCodeInvalidResponse},
-		{name: "too large", body: `"` + strings.Repeat("a", 128) + `"`, code: ErrorCodeResponseTooLarge},
+		{name: "too large", body: strings.Repeat("a", 128), code: ErrorCodeResponseTooLarge},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Content-Type", "application/octet-stream")
 				_, _ = fmt.Fprint(w, tt.body)
 			}))
 			defer server.Close()
@@ -204,7 +208,7 @@ func TestClientRejectsInvalidOrOversizedResponse(t *testing.T) {
 func TestClientHonorsTotalTimeout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(200 * time.Millisecond)
-		_, _ = w.Write([]byte(`{"late":true}`))
+		_, _ = w.Write([]byte("late"))
 	}))
 	defer server.Close()
 

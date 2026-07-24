@@ -70,7 +70,7 @@ func TestAPIntentWaitsToDeliverOrdinaryIEWithEcho(t *testing.T) {
 		t.Fatalf("DL messages before HTTP response = %#v, want none", dlMessages)
 	}
 	jobs := dispatcher.Jobs()
-	wantPayload := testAdaptedIntentPayload(t, testIntentPayload(t, payload), ue.Supi)
+	wantPayload := testIntentPayload(t, payload)
 	if len(jobs) != 1 || !bytes.Equal(jobs[0].Request.Payload, wantPayload) {
 		t.Fatalf("jobs = %#v", jobs)
 	}
@@ -138,14 +138,13 @@ func TestAPIntentRuntimeDefaultsToThreeSecondRequestDeadline(t *testing.T) {
 	}
 }
 
-func TestAPIntentRejectsInvalidULIntentWithoutSubmittingHTTP(t *testing.T) {
+func TestAPIntentForwardsOpaquePayloadWithoutIntentValidation(t *testing.T) {
 	tests := []struct {
 		name    string
 		payload []byte
-		code    string
 	}{
-		{name: "invalid JSON", payload: []byte(`{"intentId":`), code: nagent.ErrorCodeInvalidJSON},
-		{name: "missing fields", payload: []byte(`{"intentId":"one"}`), code: nagent.ErrorCodeInvalidRequest},
+		{name: "invalid JSON", payload: []byte(`{"intentId":`)},
+		{name: "arbitrary bytes", payload: []byte{0x00, 0x01, 0xff, 'a', 'p'}},
 	}
 
 	for index, test := range tests {
@@ -171,16 +170,12 @@ func TestAPIntentRejectsInvalidULIntentWithoutSubmittingHTTP(t *testing.T) {
 			if err != nil {
 				t.Fatalf("processULCooperationIEs() error = %v", err)
 			}
-			assertAPIntentErrorCode(t, dlMessages, test.code)
-			if len(dispatcher.Jobs()) != 0 {
-				t.Fatal("invalid Intent was submitted to NAgent")
+			if len(dlMessages) != 0 {
+				t.Fatalf("DL messages before HTTP response = %#v, want none", dlMessages)
 			}
-			ap, err := nasMessage.DecodeAPContainer(dlMessages[0][0].GetContents())
-			if err != nil {
-				t.Fatalf("DecodeAPContainer() error = %v", err)
-			}
-			if ap.ContainerType != apIntentResponseContainerType || ap.ContainerTypePTI != 5 {
-				t.Fatalf("invalid Intent DL AP fields = %#v", ap)
+			jobs := dispatcher.Jobs()
+			if len(jobs) != 1 || !bytes.Equal(jobs[0].Request.Payload, test.payload) {
+				t.Fatalf("jobs = %#v, want payload %x", jobs, test.payload)
 			}
 		})
 	}
@@ -901,7 +896,7 @@ func TestAPIntentReassemblesThroughMockHTTPAndFragmentsDL(t *testing.T) {
 	ue := testAPIntentUE(t)
 	description := []byte(`{"intent":"` + strings.Repeat("x", 600) + `"}`)
 	ulPayload := testIntentPayload(t, description)
-	wantResponse := testAdaptedIntentPayload(t, ulPayload, ue.Supi)
+	wantResponse := ulPayload
 	const fragmentSize = 200
 	for offset := 0; offset < len(ulPayload); offset += fragmentSize {
 		end := offset + fragmentSize
@@ -971,16 +966,11 @@ func TestAPIntentAllowsParallelPayloadsToCompleteIndependently(t *testing.T) {
 			http.Error(w, "read error", http.StatusBadRequest)
 			return
 		}
-		var forwarded nagent.Intent
-		if err := json.Unmarshal(body, &forwarded); err != nil {
-			http.Error(w, "invalid request", http.StatusBadRequest)
-			return
-		}
-		if forwarded.IntentDescription == `{"id":1}` {
+		if bytes.Contains(body, []byte(`{\"id\":1}`)) {
 			firstReceivedOnce.Do(func() { close(firstReceived) })
 			<-releaseFirst
 		}
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/octet-stream")
 		_, _ = w.Write(body)
 	}))
 	t.Cleanup(server.Close)
@@ -1023,7 +1013,7 @@ func TestAPIntentAllowsParallelPayloadsToCompleteIndependently(t *testing.T) {
 	select {
 	case transaction := <-delivered:
 		if transaction.PayloadID != 2 ||
-			!bytes.Equal(transaction.ResponsePayload, testAdaptedIntentPayload(t, testIntentPayload(t, []byte(`{"id":2}`)), ue.Supi)) {
+			!bytes.Equal(transaction.ResponsePayload, testIntentPayload(t, []byte(`{"id":2}`))) {
 			t.Fatalf("first completed transaction = %#v, want payload 2", transaction)
 		}
 	case <-time.After(time.Second):
@@ -1033,7 +1023,7 @@ func TestAPIntentAllowsParallelPayloadsToCompleteIndependently(t *testing.T) {
 	select {
 	case transaction := <-delivered:
 		if transaction.PayloadID != 1 ||
-			!bytes.Equal(transaction.ResponsePayload, testAdaptedIntentPayload(t, testIntentPayload(t, []byte(`{"id":1}`)), ue.Supi)) {
+			!bytes.Equal(transaction.ResponsePayload, testIntentPayload(t, []byte(`{"id":1}`))) {
 			t.Fatalf("second completed transaction = %#v, want payload 1", transaction)
 		}
 	case <-time.After(time.Second):
@@ -1058,7 +1048,7 @@ func configureTestAPIntent(
 		ResponseTTL:      time.Minute,
 		MaxInFlightPerUE: 8,
 		Sender:           sender,
-		AgentRoutes:       []nagent.AgentRoute{{Name: "default", Schema: "intent", IntentTypes: []string{"*"}}},
+		AgentRoutes:      []nagent.AgentRoute{{Name: "default", Schema: "intent", IntentTypes: []string{"*"}}},
 	})
 	t.Cleanup(func() { configureAPIntentRuntime(apIntentRuntimeConfig{}) })
 }
@@ -1113,16 +1103,6 @@ func testIntentPayload(t *testing.T, description []byte) []byte {
 		t.Fatalf("encode test Intent: %v", err)
 	}
 	return payload
-}
-
-func testAdaptedIntentPayload(t *testing.T, payload []byte, supi string) []byte {
-	t.Helper()
-	routes := []nagent.AgentRoute{{Name: "default", Schema: "intent", IntentTypes: []string{"*"}}}
-	adapted, _, err := nagent.AdaptIntentPayload(payload, supi, routes)
-	if err != nil {
-		t.Fatalf("AdaptIntentPayload() error = %v", err)
-	}
-	return adapted
 }
 
 func readyAPIntentTransaction(

@@ -3,7 +3,6 @@ package nagent
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -36,10 +35,6 @@ func NewMockHandler(config MockConfig) http.Handler {
 			http.NotFound(w, request)
 			return
 		}
-		if !strings.HasPrefix(strings.ToLower(request.Header.Get("Content-Type")), "application/json") {
-			http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-			return
-		}
 		body, err := io.ReadAll(io.LimitReader(request.Body, int64(config.MaxPayloadBytes)+1))
 		if err != nil {
 			http.Error(w, "cannot read body", http.StatusBadRequest)
@@ -47,10 +42,6 @@ func NewMockHandler(config MockConfig) http.Handler {
 		}
 		if len(body) > config.MaxPayloadBytes {
 			http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
-			return
-		}
-		if !json.Valid(body) {
-			http.Error(w, "invalid JSON", http.StatusBadRequest)
 			return
 		}
 		if config.Delay > 0 {
@@ -70,7 +61,11 @@ func NewMockHandler(config MockConfig) http.Handler {
 			http.Error(w, fmt.Sprintf("configured status %d", config.Status), config.Status)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
+		contentType := request.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		w.Header().Set("Content-Type", contentType)
 		for _, name := range []string{
 			HeaderRequestID,
 			HeaderAccessType,

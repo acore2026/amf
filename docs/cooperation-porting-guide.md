@@ -12,7 +12,7 @@ DL Cooperation message type = 0xe2
 AP Container IEI            = 0x71
 ```
 
-当前流程由 UE 发起。UE 注册完成后发送受 NAS 安全保护的 UL Cooperation，AMF 解密、解析和处理各个 IE；需要响应时，AMF 通过 NGAP DownlinkNASTransport 返回一条或多条 DL Cooperation。默认配置会把重组完成的 AP Payload 解析为完整 Intent JSON，并将原始 AP Payload 作为 HTTP body 发送给 NAgent；NAgent JSON 响应原样封装为 `ContainerType=0x0101` 的 DL AP Container。当前完整运行流程见 `docs/ap-intent-nagent-flow.md`。
+当前流程由 UE 发起。UE 注册完成后发送受 NAS 安全保护的 UL Cooperation，AMF 解密、解析和处理各个 IE；需要响应时，AMF 通过 NGAP DownlinkNASTransport 返回一条或多条 DL Cooperation。默认配置会把重组完成的 AP Payload 作为不透明字节原样转发给 NAgent；NAgent 响应 body 原样封装为 `ContainerType=0x0101` 的 DL AP Container。当前完整运行流程见 `docs/ap-intent-nagent-flow.md`。
 
 AMF 不会仅因为 UE 注册完成而主动发送 DL Cooperation。NAgent 路径没有新增 AP 层确认或 AMF paging；HTTP 失败使用本文第 14 节定义的 JSON 错误载荷返回给 UE。
 
@@ -272,13 +272,12 @@ sequenceDiagram
             GMM-->>UE: No DL Cooperation
         else AP complete
             GMM->>CTX: Store completed payload
-            GMM->>GMM: Strictly decode Intent JSON
-            GMM->>GMM: Validate full Intent JSON
+            GMM->>GMM: Treat AP payload as opaque bytes
             GMM->>CTX: Store requestId -> PTI/PayloadId/generation
+            GMM-->>UE: DL Cooperation ACK
             GMM->>NAgent: POST /nagent-intent/v1/intent/{supi}<br/>Body = full AP payload
-            GMM-->>UE: No DL Cooperation before HTTP completion
             alt Valid response within 3-second total deadline
-                NAgent-->>GMM: 200 application/json
+                NAgent-->>GMM: 200 with opaque body
                 GMM->>CTX: Match requestId and recover original PTI
             else HTTP failure or 3-second deadline
                 GMM->>GMM: Build canonical NAgent error JSON
@@ -528,8 +527,8 @@ configuration:
 
 ```http
 POST /nagent-intent/v1/intent/{supi}
-Content-Type: application/json
-Accept: application/json
+Content-Type: application/octet-stream
+Accept: application/octet-stream, application/json, */*
 Idempotency-Key: <64 lowercase hex characters>
 X-NAgent-Request-ID: <same value as Idempotency-Key>
 X-AP-Access-Type: 3GPP_ACCESS
@@ -541,24 +540,11 @@ X-AP-Payload-ID: <decimal uint16>
 <exact UL AP Container payload bytes>
 ```
 
-`{supi}` 使用 URL path escaping。UL AP Payload 必须严格符合以下 JSON 结构，所有字段都必须存在，不允许未知字段，`intentPriority` 必须是整数：
+`{supi}` 使用 URL path escaping。UL AP Payload 对 AMF 是不透明字节序列，可以是 JSON、文本、二进制或未来自定义格式。AMF 不解析 payload 的 JSON 结构，不校验内部字段，也不补充或改写字段。
 
-```json
-{
-  "intentId": "intent-001",
-  "issuer": "ue",
-  "intentPriority": 10,
-  "intentType": "location",
-  "intentDescription": "Locate the target UE and return its current cell",
-  "object": "ue-location",
-  "constraint": "accuracy<100m",
-  "target": "imsi-001010000000002"
-}
-```
+AMF 会把完整 UL AP Payload 原样转发给 NAgent。协议约定 Intent 使用 `ContainerType=0x0101`，但 AMF 不检查 AP Payload 内部语义；DL 响应和错误始终使用 `ContainerType=0x0101`。
 
-AMF 会把完整 UL AP Payload 原样转发给 NAgent。协议约定 Intent 使用 `ContainerType=0x0101`，此时 HTTP body 就是上面的完整 Intent JSON 字节，不再提取并单独包装 `intentDescription`。当前 AMF 实现的 NAgent 入口以“AP payload 是否是完整 Intent JSON”为实际触发条件，并不会在 UL 方向强制拒绝其它 `ContainerType`；但 DL 响应和错误始终使用 `ContainerType=0x0101`。
-
-NAgent 成功响应必须是 `HTTP 200`、`Content-Type: application/json` 且 body 为合法 JSON。第一版 mock 原样返回请求 body，并回显上述 `X-*` 关联头。响应 body 被视为不透明 Agent 结果，不从中读取 PTI，并原样进入 DL AP Payload。为兼容只返回 JSON 的 Agent，响应关联头均为可选；但只要响应携带其中任意一个，HTTP client 就会解析并验证它与原请求一致，不一致时返回 `NAGENT_INVALID_RESPONSE`。
+NAgent 成功响应必须是 `HTTP 200`，body 大小不能超过 `maxPayloadBytes`。mock 原样返回请求 body，并回显上述 `X-*` 关联头。响应 body 被视为不透明 Agent 结果，不从中读取 PTI，并原样进入 DL AP Payload。响应关联头均为可选；但只要响应携带其中任意一个，HTTP client 就会解析并验证它与原请求一致，不一致时返回 `NAGENT_INVALID_RESPONSE`。
 
 ### 14.3 幂等与事务键
 
@@ -596,7 +582,7 @@ AMF 将 DL `DF` 设为 0，允许按当前外层 length 限制重新分片；`Fr
 
 ### 14.5 重试、并发和离线行为
 
-以下情况可重试：DNS/连接失败、attempt timeout、HTTP 408、429、500、502、503、504。其他 4xx、非法 JSON 响应和超大响应不重试。单次连接、单次尝试和总请求分别受 `connectTimeoutMs`、`attemptTimeoutMs` 和 `totalTimeoutMs` 限制；默认 `totalTimeoutMs=3000`，所有重试都必须包含在这 3 秒内。HTTP 响应和截止定时器并发到达时，仅第一个完成事务，迟到结果会被忽略。
+以下情况可重试：DNS/连接失败、attempt timeout、HTTP 408、429、500、502、503、504。其他 4xx、响应关联 header 不匹配和超大响应不重试。单次连接、单次尝试和总请求分别受 `connectTimeoutMs`、`attemptTimeoutMs` 和 `totalTimeoutMs` 限制；默认 `totalTimeoutMs=3000`，所有重试都必须包含在这 3 秒内。HTTP 响应和截止定时器并发到达时，仅第一个完成事务，迟到结果会被忽略。
 
 全局最多 64 个 HTTP worker，队列默认 256；每 UE 最多保留 8 个 Pending/Ready/Sending/Sent 事务。UE 删除时取消 Pending HTTP context 并停止 Ready TTL timer。每个 RAN 同时最多执行一次底层 NGAP 写入，等待发送槽和实际写入共用 5 秒预算；连接支持 deadline 时同时设置底层 deadline，不支持时 watchdog 会在超时后关闭失去响应的连接以解除阻塞。短写也视为失败。只有所有 DL 分片均成功完成 NGAP 构造和底层连接写入，事务才进入 Sent；失败或关联切换会退回 Ready，等待当前切换流程或后续 UE 可用事件重投。这里的 Sent 只表示所有分片已经写入 AMF 本地 SCTP 连接，不表示 UE 已经接收或处理。
 
@@ -619,7 +605,6 @@ NAgent 路径错误统一编码为合法 JSON：
 当前错误 code 包括：
 
 ```text
-INVALID_JSON
 INVALID_REQUEST
 PAYLOAD_TOO_LARGE
 PAYLOAD_ID_CONFLICT
@@ -648,7 +633,7 @@ configuration:
       status: 200
 ```
 
-`delayMs` 用于模拟处理时间，`status` 可设为 `503` 验证重试和错误映射。mock 只接受正确路径、POST、JSON Content-Type 和合法 JSON。
+`delayMs` 用于模拟处理时间，`status` 可设为 `503` 验证重试和错误映射。mock 只接受正确路径和 POST，body 按不透明字节原样回显。
 
 独立命令仍保留用于不启动 AMF 的调试：
 
@@ -727,7 +712,7 @@ NGAP 测试通过 `httptest` 监听本地端口，受限 sandbox 中可能需要
 13. 每条 Cooperation 最多一个 0x71
 14. 多个 DL fragments 分成多条 DL Cooperation 发送
 15. 接入 NAS security 和 NGAP DownlinkNASTransport
-16. 增加 NAgent 配置、严格 JSON HTTP client、重试和幂等 key
+16. 增加 NAgent 配置、opaque payload HTTP client、重试和幂等 key
 17. 增加每 UE intent 状态、HTTP dispatcher、UE worker callback 和离线 TTL
 18. 提供 mock NAgent，并验证 HTTP 回显到 DL AP 再分片
 19. 增加 codec、重组、GMM、NGAP 和 race tests

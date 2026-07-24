@@ -404,25 +404,25 @@ type Sbi struct {
 }
 
 type NAgent struct {
-	Enabled             bool           `yaml:"enabled"`
-	BaseURI             string         `yaml:"baseUri,omitempty"`
-	Routes              []NAgentRoute  `yaml:"routes,omitempty"`
-	ConnectTimeoutMs    int            `yaml:"connectTimeoutMs,omitempty"`
-	AttemptTimeoutMs    int            `yaml:"attemptTimeoutMs,omitempty"`
-	TotalTimeoutMs      int            `yaml:"totalTimeoutMs,omitempty"`
-	MaxAttempts         int            `yaml:"maxAttempts,omitempty"`
-	MaxPayloadBytes     int            `yaml:"maxPayloadBytes,omitempty"`
-	MaxInFlight         int            `yaml:"maxInFlight,omitempty"`
-	MaxInFlightPerUE    int            `yaml:"maxInFlightPerUe,omitempty"`
-	QueueSize           int            `yaml:"queueSize,omitempty"`
-	PendingDLTTLSeconds int            `yaml:"pendingDlTtlSeconds,omitempty"`
-	Mock                NAgentMock     `yaml:"mock,omitempty"`
+	Enabled             bool          `yaml:"enabled"`
+	BaseURI             string        `yaml:"baseUri,omitempty"`
+	Routes              []NAgentRoute `yaml:"routes,omitempty"`
+	ConnectTimeoutMs    int           `yaml:"connectTimeoutMs,omitempty"`
+	AttemptTimeoutMs    int           `yaml:"attemptTimeoutMs,omitempty"`
+	TotalTimeoutMs      int           `yaml:"totalTimeoutMs,omitempty"`
+	MaxAttempts         int           `yaml:"maxAttempts,omitempty"`
+	MaxPayloadBytes     int           `yaml:"maxPayloadBytes,omitempty"`
+	MaxInFlight         int           `yaml:"maxInFlight,omitempty"`
+	MaxInFlightPerUE    int           `yaml:"maxInFlightPerUe,omitempty"`
+	QueueSize           int           `yaml:"queueSize,omitempty"`
+	PendingDLTTLSeconds int           `yaml:"pendingDlTtlSeconds,omitempty"`
+	Mock                NAgentMock    `yaml:"mock,omitempty"`
 }
 
 type NAgentRoute struct {
 	Name        string   `yaml:"name"`
 	BaseURI     string   `yaml:"baseUri"`
-	Path       string   `yaml:"path"`
+	Path        string   `yaml:"path"`
 	IntentTypes []string `yaml:"intentTypes"`
 	Schema      string   `yaml:"schema"`
 }
@@ -1198,10 +1198,10 @@ func (c *Config) GetNAgentRoutes() []nagent.AgentRoute {
 	var routes []nagent.AgentRoute
 	if len(cfg.Routes) == 0 {
 		routes = append(routes, nagent.AgentRoute{
-			Name:    "default",
-			BaseURI: cfg.BaseURI,
-			Path:    "/nagent-intent/v1/intent/{supi}",
-			Schema:  "intent",
+			Name:        "default",
+			BaseURI:     cfg.BaseURI,
+			Path:        "/nagent-intent/v1/intent/{supi}",
+			Schema:      "intent",
 			IntentTypes: []string{"*"},
 		})
 		return routes

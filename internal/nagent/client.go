@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -166,9 +165,6 @@ func (c *Client) SubmitIntent(ctx context.Context, request IntentRequest) ([]byt
 	if len(request.Payload) > c.maxPayloadBytes {
 		return nil, &Error{Code: ErrorCodePayloadTooLarge}
 	}
-	if !json.Valid(request.Payload) {
-		return nil, &Error{Code: ErrorCodeInvalidJSON}
-	}
 	totalCtx, cancel := context.WithTimeout(ctx, c.totalTimeout)
 	defer cancel()
 
@@ -204,8 +200,8 @@ func (c *Client) submitAttempt(ctx context.Context, request IntentRequest, key s
 	if err != nil {
 		return nil, &Error{Code: ErrorCodeInvalidRequest, Cause: err}
 	}
-	httpRequest.Header.Set("Content-Type", "application/json")
-	httpRequest.Header.Set("Accept", "application/json")
+	httpRequest.Header.Set("Content-Type", "application/octet-stream")
+	httpRequest.Header.Set("Accept", "application/octet-stream, application/json, */*")
 	httpRequest.Header.Set("Idempotency-Key", key)
 	httpRequest.Header.Set(HeaderRequestID, key)
 	httpRequest.Header.Set(HeaderAccessType, request.AccessType)
@@ -231,20 +227,12 @@ func (c *Client) submitAttempt(ctx context.Context, request IntentRequest, key s
 		}
 		return nil, &Error{Code: code, Retryable: retryable, HTTPStatus: response.StatusCode}
 	}
-	contentType := response.Header.Get("Content-Type")
-	if !strings.HasPrefix(strings.ToLower(contentType), "application/json") {
-		return nil, &Error{Code: ErrorCodeInvalidResponse,
-			Cause: fmt.Errorf("unexpected Content-Type %q", contentType)}
-	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, int64(c.maxPayloadBytes)+1))
 	if err != nil {
 		return nil, &Error{Code: ErrorCodeInvalidResponse, Cause: err}
 	}
 	if len(body) > c.maxPayloadBytes {
 		return nil, &Error{Code: ErrorCodeResponseTooLarge}
-	}
-	if !json.Valid(body) {
-		return nil, &Error{Code: ErrorCodeInvalidResponse}
 	}
 	if err := validateResponseCorrelation(response.Header, request, key); err != nil {
 		return nil, &Error{Code: ErrorCodeInvalidResponse, Cause: err}

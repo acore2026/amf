@@ -146,18 +146,6 @@ func processCompletedAPIntent(
 		Payload:          append([]byte(nil), complete.Payload...),
 		PendingDLIEs:     cooperationIEData(ordinary),
 	}
-	_, intentBody, err := nagent.ValidateIntentRequestBody(complete.Payload)
-	if err != nil {
-		code, retryable, httpStatus := apIntentErrorDetails(err)
-		return buildImmediateAPIntentError(ordinary, request, code, retryable, httpStatus)
-	}
-	adaptedBody, route, err := nagent.AdaptIntentPayload(intentBody, ue.Supi, runtime.AgentRoutes)
-	if err != nil {
-		code, retryable, httpStatus := apIntentErrorDetails(err)
-		return buildImmediateAPIntentError(ordinary, request, code, retryable, httpStatus)
-	}
-	requestForHTTP.Payload = adaptedBody
-	requestForHTTP.Route = route
 	request.HTTPRequestID = nagent.IdempotencyKey(requestForHTTP)
 	begin, transaction := ue.GetOrCreateCooperationContext().BeginAPIntentWithLimit(
 		request, time.Now(), runtime.MaxInFlightPerUE,
@@ -210,7 +198,7 @@ func processCompletedAPIntent(
 		})
 	})
 	sendAPIntentACK(ue, accessType, messageIdentity, complete)
-	err = runtime.Dispatcher.Submit(nagent.Job{
+	if err := runtime.Dispatcher.Submit(nagent.Job{
 		Context: jobContext,
 		Request: requestForHTTP,
 		Callback: func(result nagent.Result) {
@@ -218,8 +206,7 @@ func processCompletedAPIntent(
 			cancel()
 			handleAPIntentHTTPResult(runtime, ue, transaction, result)
 		},
-	})
-	if err != nil {
+	}); err != nil {
 		stopDeadline()
 		cancel()
 		ue.CooperationContext.RemoveAPIntent(transaction.PayloadID, transaction.Generation)
