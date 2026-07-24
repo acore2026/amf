@@ -546,6 +546,25 @@ AMF 会把完整 UL AP Payload 原样转发给 NAgent。协议约定 Intent 使�
 
 NAgent 成功响应必须是 `HTTP 200`，body 大小不能超过 `maxPayloadBytes`。mock 原样返回请求 body，并回显上述 `X-*` 关联头。响应 body 被视为不透明 Agent 结果，不从中读取 PTI，并原样进入 DL AP Payload。响应关联头均为可选；但只要响应携带其中任意一个，HTTP client 就会解析并验证它与原请求一致，不一致时返回 `NAGENT_INVALID_RESPONSE`。
 
+手工模拟 AMF 到 NAgent 的 HTTP 请求时，可以直接发完整 AP Payload bytes：
+
+```bash
+curl -v \
+  -X POST "http://127.0.0.1:8088/nagent-intent/v1/intent/imsi-001010000000001" \
+  -H "Content-Type: application/octet-stream" \
+  -H "Accept: application/octet-stream, application/json, */*" \
+  -H "Idempotency-Key: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" \
+  -H "X-NAgent-Request-ID: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" \
+  -H "X-AP-Access-Type: 3GPP_ACCESS" \
+  -H "X-AP-Message-Identity: 1" \
+  -H "X-AP-Container-Type: 257" \
+  -H "X-AP-PTI: 1" \
+  -H "X-AP-Payload-ID: 100" \
+  --data-binary '{"intent":"Locate the target UE"}'
+```
+
+如果要模拟非 JSON payload，可使用 `printf ... | curl --data-binary @-`。这里 `X-AP-Message-Identity: 1` 是 Cooperation 消息体内的 `MessageIdentity=0x01`；`X-AP-Container-Type: 257` 是 `0x0101` 的十进制表示。
+
 ### 14.3 幂等与事务键
 
 每个 UE 的事务以 `ContainerPayloadId` 为索引。AMF 事务指纹覆盖 SUPI、MessageIdentity、AccessType、ContainerType、PTI、PayloadId 和完整 UL Intent payload 的 SHA-256：

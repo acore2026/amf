@@ -305,6 +305,46 @@ HTTP body 与重组后的 UL AP Container payload 完全一致
 AMF 不保证 HTTP body 是 JSON，也不校验其中字段
 ```
 
+### 8.1 手工模拟 AMF HTTP 请求
+
+没有真实 UE 或 AMF 时，可以直接用 `curl` 模拟 AMF 发给 NAgent 的 HTTP 请求。该请求只模拟 AMF 到 NAgent 的这一段链路；body 应填写重组完成后的 UL AP Container `Payload`，不是完整 NAS PDU，也不是完整 AP Container。
+
+JSON payload 示例：
+
+```bash
+curl -v \
+  -X POST "http://127.0.0.1:8088/nagent-intent/v1/intent/imsi-001010000000001" \
+  -H "Content-Type: application/octet-stream" \
+  -H "Accept: application/octet-stream, application/json, */*" \
+  -H "Idempotency-Key: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" \
+  -H "X-NAgent-Request-ID: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" \
+  -H "X-AP-Access-Type: 3GPP_ACCESS" \
+  -H "X-AP-Message-Identity: 1" \
+  -H "X-AP-Container-Type: 257" \
+  -H "X-AP-PTI: 1" \
+  -H "X-AP-Payload-ID: 100" \
+  --data-binary '{"intent":"Locate the target UE"}'
+```
+
+二进制 payload 示例：
+
+```bash
+printf '\x01\x02\x03\x04hello' | curl -v \
+  -X POST "http://127.0.0.1:8088/nagent-intent/v1/intent/imsi-001010000000001" \
+  -H "Content-Type: application/octet-stream" \
+  -H "Accept: application/octet-stream, application/json, */*" \
+  -H "Idempotency-Key: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" \
+  -H "X-NAgent-Request-ID: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" \
+  -H "X-AP-Access-Type: 3GPP_ACCESS" \
+  -H "X-AP-Message-Identity: 1" \
+  -H "X-AP-Container-Type: 257" \
+  -H "X-AP-PTI: 1" \
+  -H "X-AP-Payload-ID: 100" \
+  --data-binary @-
+```
+
+手工模拟时 `Idempotency-Key` 可以先使用任意稳定的 64 字符 hex 字符串，并让 `X-NAgent-Request-ID` 保持相同。真实 AMF 会根据 SUPI、AccessType、MessageIdentity、ContainerType、PTI、PayloadId 和 payload hash 生成该值。
+
 ## 9. HTTP 响应处理
 
 NAgent 成功响应要求：
