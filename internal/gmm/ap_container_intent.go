@@ -53,7 +53,6 @@ type apIntentRuntimeConfig struct {
 	ResponseTTL        time.Duration
 	MaxInFlightPerUE   int
 	Sender             apIntentResponseSender
-	AgentRoutes        []nagent.AgentRoute
 }
 
 func ConfigureAPIntentIntegration(
@@ -63,7 +62,6 @@ func ConfigureAPIntentIntegration(
 	requestTimeout time.Duration,
 	responseTTL time.Duration,
 	maxInFlightPerUE int,
-	agentRoutes []nagent.AgentRoute,
 ) {
 	configureAPIntentRuntime(apIntentRuntimeConfig{
 		Enabled:            enabled,
@@ -73,7 +71,6 @@ func ConfigureAPIntentIntegration(
 		ResponseTTL:        responseTTL,
 		MaxInFlightPerUE:   maxInFlightPerUE,
 		Sender:             deliverAPIntentResponse,
-		AgentRoutes:        agentRoutes,
 	})
 }
 

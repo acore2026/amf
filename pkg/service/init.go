@@ -105,7 +105,7 @@ func NewApp(ctx context.Context, cfg *factory.Config, tlsKeyLogPath string) (*Am
 func (a *AmfApp) configureNAgent() error {
 	nagentConfig := a.cfg.GetNAgentConfig()
 	if !nagentConfig.Enabled {
-		gmm.ConfigureAPIntentIntegration(false, nil, nil, 0, 0, 0, nil)
+		gmm.ConfigureAPIntentIntegration(false, nil, nil, 0, 0, 0)
 		return nil
 	}
 	if nagentConfig.Mock.Enabled {
@@ -134,7 +134,6 @@ func (a *AmfApp) configureNAgent() error {
 	}
 	client := nagent.NewClient(nagent.ClientConfig{
 		BaseURI:         nagentConfig.BaseURI,
-		PathTemplate:    "/nagent-intent/v1/intent/{supi}",
 		ConnectTimeout:  time.Duration(nagentConfig.ConnectTimeoutMs) * time.Millisecond,
 		AttemptTimeout:  time.Duration(nagentConfig.AttemptTimeoutMs) * time.Millisecond,
 		TotalTimeout:    time.Duration(nagentConfig.TotalTimeoutMs) * time.Millisecond,
@@ -142,26 +141,8 @@ func (a *AmfApp) configureNAgent() error {
 		MaxPayloadBytes: nagentConfig.MaxPayloadBytes,
 		InitialBackoff:  100 * time.Millisecond,
 	})
-	routes := a.cfg.GetNAgentRoutes()
-	routeClients := make(map[string]*nagent.Client)
-	for _, r := range routes {
-		if r.Name == "default" || r.BaseURI == nagentConfig.BaseURI {
-			continue
-		}
-		routeClients[r.Name] = nagent.NewClient(nagent.ClientConfig{
-			BaseURI:         r.BaseURI,
-			PathTemplate:    r.Path,
-			ConnectTimeout:  time.Duration(nagentConfig.ConnectTimeoutMs) * time.Millisecond,
-			AttemptTimeout:  time.Duration(nagentConfig.AttemptTimeoutMs) * time.Millisecond,
-			TotalTimeout:    time.Duration(nagentConfig.TotalTimeoutMs) * time.Millisecond,
-			MaxAttempts:     nagentConfig.MaxAttempts,
-			MaxPayloadBytes: nagentConfig.MaxPayloadBytes,
-			InitialBackoff:  100 * time.Millisecond,
-		})
-	}
-	router := nagent.NewRouter(client, routeClients)
 	a.nagentDispatcher = nagent.NewDispatcher(
-		a.ctx, router, nagentConfig.MaxInFlight, nagentConfig.QueueSize,
+		a.ctx, client, nagentConfig.MaxInFlight, nagentConfig.QueueSize,
 	)
 	gmm.ConfigureAPIntentIntegration(
 		true,
@@ -170,7 +151,6 @@ func (a *AmfApp) configureNAgent() error {
 		time.Duration(nagentConfig.TotalTimeoutMs)*time.Millisecond,
 		time.Duration(nagentConfig.PendingDLTTLSeconds)*time.Second,
 		nagentConfig.MaxInFlightPerUE,
-		routes,
 	)
 	return nil
 }
@@ -379,7 +359,7 @@ func (a *AmfApp) WaitRoutineStopped() {
 
 func (a *AmfApp) terminateProcedure() {
 	logger.MainLog.Infof("Terminating AMF...")
-	gmm.ConfigureAPIntentIntegration(false, nil, nil, 0, 0, 0, nil)
+	gmm.ConfigureAPIntentIntegration(false, nil, nil, 0, 0, 0)
 	if a.nagentDispatcher != nil {
 		a.nagentDispatcher.Stop()
 	}

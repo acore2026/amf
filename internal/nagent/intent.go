@@ -10,11 +10,3 @@ type Intent struct {
 	Constraint        string `json:"constraint"`
 	Target            string `json:"target"`
 }
-
-type AgentRoute struct {
-	Name        string
-	BaseURI     string
-	Path        string
-	Schema      string
-	IntentTypes []string
-}

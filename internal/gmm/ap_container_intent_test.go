@@ -1048,7 +1048,6 @@ func configureTestAPIntent(
 		ResponseTTL:      time.Minute,
 		MaxInFlightPerUE: 8,
 		Sender:           sender,
-		AgentRoutes:      []nagent.AgentRoute{{Name: "default", Schema: "intent", IntentTypes: []string{"*"}}},
 	})
 	t.Cleanup(func() { configureAPIntentRuntime(apIntentRuntimeConfig{}) })
 }

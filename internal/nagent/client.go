@@ -44,12 +44,10 @@ type IntentRequest struct {
 	PTI             uint8
 	PayloadID       uint16
 	Payload         []byte
-	Route           *AgentRoute
 }
 
 type ClientConfig struct {
 	BaseURI            string
-	PathTemplate       string
 	ConnectTimeout     time.Duration
 	AttemptTimeout     time.Duration
 	TotalTimeout       time.Duration
@@ -88,7 +86,6 @@ func (e *Error) Unwrap() error {
 
 type Client struct {
 	baseURI         string
-	pathTemplate    string
 	httpClient      *http.Client
 	attemptTimeout  time.Duration
 	totalTimeout    time.Duration
@@ -100,9 +97,6 @@ type Client struct {
 func NewClient(config ClientConfig) *Client {
 	if config.MaxAttempts <= 0 {
 		config.MaxAttempts = 1
-	}
-	if config.PathTemplate == "" {
-		config.PathTemplate = "/nagent-intent/v1/intent/{supi}"
 	}
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
@@ -117,7 +111,6 @@ func NewClient(config ClientConfig) *Client {
 	}
 	return &Client{
 		baseURI:         strings.TrimRight(config.BaseURI, "/"),
-		pathTemplate:    config.PathTemplate,
 		httpClient:      &http.Client{Transport: transport},
 		attemptTimeout:  config.AttemptTimeout,
 		totalTimeout:    config.TotalTimeout,
@@ -125,37 +118,6 @@ func NewClient(config ClientConfig) *Client {
 		maxPayloadBytes: config.MaxPayloadBytes,
 		initialBackoff:  config.InitialBackoff,
 	}
-}
-
-func (c *Client) resolvePath(request IntentRequest) string {
-	path := c.pathTemplate
-	path = strings.ReplaceAll(path, "{supi}", url.PathEscape(request.SUPI))
-	return path
-}
-
-type Router struct {
-	clients       map[string]*Client
-	defaultClient *Client
-}
-
-func NewRouter(defaultClient *Client, routeClients map[string]*Client) *Router {
-	return &Router{
-		clients:       routeClients,
-		defaultClient: defaultClient,
-	}
-}
-
-func (r *Router) SubmitIntent(ctx context.Context, request IntentRequest) ([]byte, error) {
-	client := r.defaultClient
-	if request.Route != nil {
-		if c, ok := r.clients[request.Route.Name]; ok {
-			client = c
-		}
-	}
-	if client == nil {
-		return nil, &Error{Code: ErrorCodeUnavailable, Cause: fmt.Errorf("no client for route %q", request.Route.Name)}
-	}
-	return client.SubmitIntent(ctx, request)
 }
 
 func (c *Client) SubmitIntent(ctx context.Context, request IntentRequest) ([]byte, error) {
@@ -194,7 +156,7 @@ func (c *Client) SubmitIntent(ctx context.Context, request IntentRequest) ([]byt
 func (c *Client) submitAttempt(ctx context.Context, request IntentRequest, key string) ([]byte, error) {
 	attemptCtx, cancel := context.WithTimeout(ctx, c.attemptTimeout)
 	defer cancel()
-	endpoint := c.baseURI + c.resolvePath(request)
+	endpoint := c.baseURI + "/nagent-intent/v1/intent/" + url.PathEscape(request.SUPI)
 	httpRequest, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, endpoint,
 		bytes.NewReader(request.Payload))
 	if err != nil {
@@ -288,11 +250,6 @@ func IntentRequestFingerprint(request IntentRequest) [32]byte {
 	_, _ = h.Write(fields[:])
 	payloadHash := sha256.Sum256(request.Payload)
 	_, _ = h.Write(payloadHash[:])
-	if request.Route != nil {
-		writeLengthPrefixedString(h, request.Route.Name)
-		writeLengthPrefixedString(h, request.Route.BaseURI)
-		writeLengthPrefixedString(h, request.Route.Path)
-	}
 	var result [32]byte
 	copy(result[:], h.Sum(nil))
 	return result
