@@ -12,7 +12,7 @@ const (
 	APContainerFlagMF                      uint8 = 0x04
 	APContainerKnownFlags                  uint8 = APContainerFlagDF | APContainerFlagMF
 	APContainerMaxReassembledPayloadLength       = 65535
-	APContainerMaxDLFragmentSize                 = 245
+	APContainerMaxDLFragmentSize                 = 1400
 )
 
 type APContainer struct {

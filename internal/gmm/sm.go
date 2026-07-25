@@ -28,9 +28,6 @@ func handleServiceRequestOutcome(
 		logger.GmmLog.Errorln(err)
 		return
 	}
-	if outcome == ServiceRequestAccepted {
-		sendPendingAPIntentResponses(ue, accessType, false)
-	}
 }
 
 func DeRegistered(state *fsm.State, event fsm.EventType, args fsm.ArgsType) {
@@ -89,7 +86,6 @@ func Registered(state *fsm.State, event fsm.EventType, args fsm.ArgsType) {
 		// If we have a radio connection, and we enter the registered state, then we increase the gauge
 		if amfUe.CmConnect(accessType) {
 			business_metrics.IncrUeConnectivityGauge(accessType)
-			sendPendingAPIntentResponses(amfUe, accessType, true)
 		}
 
 	case GmmMessageEvent:

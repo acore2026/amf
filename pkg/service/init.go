@@ -105,7 +105,7 @@ func NewApp(ctx context.Context, cfg *factory.Config, tlsKeyLogPath string) (*Am
 func (a *AmfApp) configureNAgent() error {
 	nagentConfig := a.cfg.GetNAgentConfig()
 	if !nagentConfig.Enabled {
-		gmm.ConfigureAPIntentIntegration(false, nil, nil, 0, 0, 0)
+		gmm.ConfigureAPIntentIntegration(false, nil, 0)
 		return nil
 	}
 	if nagentConfig.Mock.Enabled {
@@ -146,11 +146,8 @@ func (a *AmfApp) configureNAgent() error {
 	)
 	gmm.ConfigureAPIntentIntegration(
 		true,
-		a.nagentDispatcher,
-		ngap.DispatchUECallback,
+		client,
 		time.Duration(nagentConfig.TotalTimeoutMs)*time.Millisecond,
-		time.Duration(nagentConfig.PendingDLTTLSeconds)*time.Second,
-		nagentConfig.MaxInFlightPerUE,
 	)
 	return nil
 }
@@ -359,7 +356,7 @@ func (a *AmfApp) WaitRoutineStopped() {
 
 func (a *AmfApp) terminateProcedure() {
 	logger.MainLog.Infof("Terminating AMF...")
-	gmm.ConfigureAPIntentIntegration(false, nil, nil, 0, 0, 0)
+	gmm.ConfigureAPIntentIntegration(false, nil, 0)
 	if a.nagentDispatcher != nil {
 		a.nagentDispatcher.Stop()
 	}
