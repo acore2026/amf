@@ -1767,6 +1767,16 @@ func handleNASNonDeliveryIndicationMain(ran *context.AmfRan,
 	}
 
 	if nASPDU != nil {
+		if ranUe != nil && ranUe.AmfUe != nil && ranUe.AmfUe.CooperationContext != nil {
+			accessType := models.AccessType("")
+			if ran != nil {
+				accessType = ran.AnType
+			}
+			if accessType == "" && ranUe.Ran != nil {
+				accessType = ranUe.Ran.AnType
+			}
+			ranUe.AmfUe.CooperationContext.MarkAPIntentNASNonDelivery(accessType, nASPDU.Value)
+		}
 		amf_nas.HandleNAS(ranUe, ngapType.ProcedureCodeNASNonDeliveryIndication, nASPDU.Value, false)
 	}
 }

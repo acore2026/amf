@@ -72,6 +72,7 @@ func TestNASNonDeliveryIndicationReturnsMatchedAPIntentToReady(t *testing.T) {
 	accessType := models.AccessType__3_GPP_ACCESS
 	ue := &amf_context.AmfUe{
 		GmmLog: logger.GmmLog,
+		NASLog: logger.NasLog,
 	}
 	cooperation := ue.GetOrCreateCooperationContext()
 	request := amf_context.APIntentRequest{

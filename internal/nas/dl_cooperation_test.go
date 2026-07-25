@@ -81,7 +81,7 @@ func TestEncodeDLCooperationWithMultipleTLVs(t *testing.T) {
 }
 
 func TestDLCooperationOneByteLengthSupports245ByteAPFragment(t *testing.T) {
-	payload := bytes.Repeat([]byte{0x5a}, nasMessage.APContainerMaxDLFragmentSize)
+	payload := bytes.Repeat([]byte{0x5a}, nasMessage.APContainerMaxOneByteDLFragmentSize)
 	apContents := mustEncodeTestAPContainer(t, payload, nasMessage.APContainerFlagMF)
 	if len(apContents) != 255 {
 		t.Fatalf("AP Container length = %d, want 255", len(apContents))

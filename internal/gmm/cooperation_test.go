@@ -100,7 +100,7 @@ func TestProcessULCooperationGroupsOrdinaryIEOnlyWithFirstAPFragment(t *testing.
 	ul := nasMessage.NewULCooperation(nas.MsgTypeULCooperation)
 	ul.MessageIdentity = 0x02
 	mustAddIE(t, ul, 0x10, []byte{0x01})
-	payload := bytes.Repeat([]byte{0xaa}, 500)
+	payload := bytes.Repeat([]byte{0xaa}, 1500)
 	contents := mustEncodeAPContainer(t, &nasMessage.APContainer{
 		ContainerType:      0x0100,
 		ContainerTypePTI:   0x05,
@@ -113,16 +113,15 @@ func TestProcessULCooperationGroupsOrdinaryIEOnlyWithFirstAPFragment(t *testing.
 	if err != nil {
 		t.Fatalf("processULCooperationIEs() error = %v", err)
 	}
-	if len(dlMessages) != 3 {
-		t.Fatalf("DL message count = %d, want 3", len(dlMessages))
+	if len(dlMessages) != 2 {
+		t.Fatalf("DL message count = %d, want 2", len(dlMessages))
 	}
-	if len(dlMessages[0]) != 2 || len(dlMessages[1]) != 1 || len(dlMessages[2]) != 1 {
+	if len(dlMessages[0]) != 2 || len(dlMessages[1]) != 1 {
 		t.Fatalf("DL grouping = %#v", dlMessages)
 	}
 	assertDLIE(t, dlMessages[0][0], 0x10, []byte{0x01})
-	assertAPContainerIE(t, dlMessages[0][1], 0, true, payload[:245])
-	assertAPContainerIE(t, dlMessages[1][0], 245, true, payload[245:490])
-	assertAPContainerIE(t, dlMessages[2][0], 490, false, payload[490:])
+	assertAPContainerIE(t, dlMessages[0][1], 0, true, payload[:1400])
+	assertAPContainerIE(t, dlMessages[1][0], 1400, false, payload[1400:])
 }
 
 func TestProcessULCooperationRejectsMultipleAPContainersWithoutBlockingIE10(t *testing.T) {

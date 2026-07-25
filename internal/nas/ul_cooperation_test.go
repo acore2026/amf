@@ -59,7 +59,7 @@ func TestPlainNasDecodeULCooperationTLVs(t *testing.T) {
 }
 
 func TestULCooperationOneByteLengthSupports245ByteAPFragment(t *testing.T) {
-	payload := bytes.Repeat([]byte{0x5a}, nasMessage.APContainerMaxDLFragmentSize)
+	payload := bytes.Repeat([]byte{0x5a}, nasMessage.APContainerMaxOneByteDLFragmentSize)
 	apContents, err := (&nasMessage.APContainer{
 		ContainerType:      0x0100,
 		ContainerTypePTI:   0x05,

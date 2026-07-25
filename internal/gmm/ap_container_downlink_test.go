@@ -47,6 +47,41 @@ func TestBuildDLAPContainerIEsFragmentsAt245Bytes(t *testing.T) {
 	}
 }
 
+func TestBuildDLAPContainerIEsUsesLargeLegacyFragments(t *testing.T) {
+	payload := bytes.Repeat([]byte{0x5a}, 1500)
+	complete := &nasMessage.APContainer{
+		ContainerType:      0x0100,
+		ContainerTypePTI:   0x05,
+		ContainerPayloadID: 0x1234,
+		Payload:            payload,
+	}
+
+	ies, err := buildDLAPContainerIEs(0x02, complete)
+	if err != nil {
+		t.Fatalf("buildDLAPContainerIEs() error = %v", err)
+	}
+	if len(ies) != 2 {
+		t.Fatalf("IE count = %d, want 2", len(ies))
+	}
+	wantOffsets := []uint16{0, 1400}
+	wantLengths := []int{1400, 100}
+	for i, ie := range ies {
+		if ie.LegacyLen == 0 {
+			t.Fatalf("fragment %d LegacyLen = 0, want legacy length", i)
+		}
+		fragment, err := nasMessage.DecodeAPContainer(ie.GetContents())
+		if err != nil {
+			t.Fatalf("fragment %d decode error = %v", i, err)
+		}
+		if fragment.FragmentOffset != wantOffsets[i] || len(fragment.Payload) != wantLengths[i] {
+			t.Fatalf("fragment %d offset=%d length=%d", i, fragment.FragmentOffset, len(fragment.Payload))
+		}
+		if fragment.MoreFragments() != (i == 0) {
+			t.Fatalf("fragment %d MF=%v", i, fragment.MoreFragments())
+		}
+	}
+}
+
 func TestBuildDLAPContainerIEsKeepsDFInOneMessage(t *testing.T) {
 	complete := &nasMessage.APContainer{
 		ContainerType:      0x0100,

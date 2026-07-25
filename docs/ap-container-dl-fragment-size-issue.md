@@ -1,6 +1,6 @@
 # AP Container DL 分片大小不匹配问题记录
 
-- 状态：未提交（工作区改动）
+- 状态：已采用方案 2 修复（`MessageIdentity=0x01` 使用 245，其余 legacy 路径使用 1400）
 - 发现日期：2026-07-25
 - 关联设计：`docs/superpowers/specs/2026-07-10-ap-container-fragmentation-design.md`（§5.2 / §8.1 规定 `APContainerMaxDLFragmentSize = 245`）
 
@@ -10,7 +10,7 @@
 
 ## 2. 根因
 
-工作区把 DL 分片大小常量从 245 改为 1400（未提交）：
+远端更新曾把 DL 分片大小常量从 245 改为 1400：
 
 ```diff
 // third_party/nas/nasMessage/NAS_APContainer.go:15
@@ -58,7 +58,7 @@ max payload = 255 − 10 = 245
 
 | 位置 | 说明 |
 |---|---|
-| `third_party/nas/nasMessage/NAS_APContainer.go:15` | `APContainerMaxDLFragmentSize` 工作区=1400，HEAD=245 |
+| `third_party/nas/nasMessage/NAS_APContainer.go:15` | `APContainerMaxOneByteDLFragmentSize=245`，`APContainerMaxDLFragmentSize=1400` |
 | `third_party/nas/nasMessage/NAS_APContainer.go:10` | `APContainerHeaderLength = 10` |
 | `third_party/nas/nasMessage/NAS_CooperationIE.go:17` | `Len uint8`（1 字节 length） |
 | `third_party/nas/nasMessage/NAS_CooperationIE.go:23` | `len(contents) > 255` 返回 error |
@@ -69,9 +69,9 @@ max payload = 255 − 10 = 245
 
 ## 6. 处置建议
 
-二选一：
+已采用方案 2：
 
-1. 回退 `APContainerMaxDLFragmentSize` 为 245，与设计文档一致（推荐，最小改动）。
-2. 按 `MessageIdentity` 分档：`0x01` 用 245（适配 1 字节 length），其余用 1400（走 `NewCooperationIELegacy` 2 字节 length，上限 65525）。
+- `MessageIdentity == 0x01`：使用 `APContainerMaxOneByteDLFragmentSize=245`，适配 1 字节 length。
+- 其他 `MessageIdentity`：使用 `APContainerMaxDLFragmentSize=1400`，走 `NewCooperationIELegacy` 2 字节 length。
 
-若选方案 2，需同步更新设计文档 §5.2 / §8.1 的常量定义与分片说明。
+这样可保留 legacy 路径的大分片能力，同时避免 `0x01` 新格式生成超过 255 字节的外层 IE contents。

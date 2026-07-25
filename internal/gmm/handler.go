@@ -204,10 +204,12 @@ func processULCooperationIEs(ue *context.AmfUe, anType models.AccessType,
 		}
 		return groupOrdinaryDLCooperationIEs(ordinaryDLIEs), nil
 	}
-	ue.GmmLog.Infof("[UL AP Container] Received: type=0x%04x pti=0x%02x payloadId=0x%04x DF=%v MF=%v offset=%d payloadLength=%d payload=%s",
-		fragment.ContainerType, fragment.ContainerTypePTI, fragment.ContainerPayloadID,
-		fragment.DontFragment(), fragment.MoreFragments(), fragment.FragmentOffset,
-		len(fragment.Payload), string(fragment.Payload))
+	if ue.GmmLog != nil {
+		ue.GmmLog.Infof("[UL AP Container] Received: type=0x%04x pti=0x%02x payloadId=0x%04x DF=%v MF=%v offset=%d payloadLength=%d payload=%s",
+			fragment.ContainerType, fragment.ContainerTypePTI, fragment.ContainerPayloadID,
+			fragment.DontFragment(), fragment.MoreFragments(), fragment.FragmentOffset,
+			len(fragment.Payload), string(fragment.Payload))
+	}
 	intentEnabled := apIntentIntegrationEnabled()
 	var complete *nasMessage.APContainer
 	if intentEnabled {

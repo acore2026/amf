@@ -25,7 +25,7 @@ func TestClientSubmitIntentEchoesOpaquePayloadAndSetsHeaders(t *testing.T) {
 		if r.URL.Path != "/nagent-intent/v1/intent/imsi-001010000000001" {
 			t.Errorf("path = %s", r.URL.Path)
 		}
-		if got := r.Header.Get("Content-Type"); got != "application/octet-stream" {
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
 			t.Errorf("Content-Type = %q", got)
 		}
 		if got := r.Header.Get("Accept"); got == "" {
@@ -47,7 +47,7 @@ func TestClientSubmitIntentEchoesOpaquePayloadAndSetsHeaders(t *testing.T) {
 		if err != nil {
 			t.Errorf("ReadAll() error = %v", err)
 		}
-		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(body)
 	}))
 	defer server.Close()

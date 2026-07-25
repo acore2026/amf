@@ -12,6 +12,7 @@ const (
 	APContainerFlagMF                      uint8 = 0x04
 	APContainerKnownFlags                  uint8 = APContainerFlagDF | APContainerFlagMF
 	APContainerMaxReassembledPayloadLength       = 65535
+	APContainerMaxOneByteDLFragmentSize          = 245
 	APContainerMaxDLFragmentSize                 = 1400
 )
 

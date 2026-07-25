@@ -27,11 +27,10 @@ func buildDLAPContainerIEs(
 		return buildSingleDLAPContainerIE(messageIdentity, fragment)
 	}
 
-	result := make([]*nasMessage.CooperationIE, 0,
-		(len(complete.Payload)+nasMessage.APContainerMaxDLFragmentSize-1)/
-			nasMessage.APContainerMaxDLFragmentSize)
-	for offset := 0; offset < len(complete.Payload); offset += nasMessage.APContainerMaxDLFragmentSize {
-		end := offset + nasMessage.APContainerMaxDLFragmentSize
+	maxFragmentSize := dlAPContainerMaxFragmentSize(messageIdentity)
+	result := make([]*nasMessage.CooperationIE, 0, (len(complete.Payload)+maxFragmentSize-1)/maxFragmentSize)
+	for offset := 0; offset < len(complete.Payload); offset += maxFragmentSize {
+		end := offset + maxFragmentSize
 		if end > len(complete.Payload) {
 			end = len(complete.Payload)
 		}
@@ -82,6 +81,13 @@ func encodeDLAPContainerIE(
 		return nil, fmt.Errorf("legacy AP Container length %d exceeds 65535", len(contents))
 	}
 	return nasMessage.NewCooperationIELegacy(nasMessage.CooperationIEType71, contents), nil
+}
+
+func dlAPContainerMaxFragmentSize(messageIdentity uint8) int {
+	if messageIdentity == 0x01 {
+		return nasMessage.APContainerMaxOneByteDLFragmentSize
+	}
+	return nasMessage.APContainerMaxDLFragmentSize
 }
 
 func cloneCompleteAPContainer(in *nasMessage.APContainer) *nasMessage.APContainer {
