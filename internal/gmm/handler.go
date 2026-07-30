@@ -49,7 +49,12 @@ func HandleULNASTransport(ue *context.AmfUe, anType models.AccessType,
 		return fmt.Errorf("NAS message integrity check failed")
 	}
 
-	switch ulNasTransport.GetPayloadContainerType() {
+	payloadContainerType := ulNasTransport.GetPayloadContainerType()
+	if shouldHandleNASTransportNAgentPassthrough(payloadContainerType) {
+		return handleULNASTransportNAgentPassthrough(ue, anType, ulNasTransport)
+	}
+
+	switch payloadContainerType {
 	// TS 24.501 5.4.5.2.3 case a)
 	case nasMessage.PayloadContainerTypeN1SMInfo:
 		return transport5GSMMessage(ue, anType, ulNasTransport)

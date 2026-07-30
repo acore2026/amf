@@ -403,18 +403,19 @@ type Sbi struct {
 }
 
 type NAgent struct {
-	Enabled             bool       `yaml:"enabled"`
-	BaseURI             string     `yaml:"baseUri,omitempty"`
-	ConnectTimeoutMs    int        `yaml:"connectTimeoutMs,omitempty"`
-	AttemptTimeoutMs    int        `yaml:"attemptTimeoutMs,omitempty"`
-	TotalTimeoutMs      int        `yaml:"totalTimeoutMs,omitempty"`
-	MaxAttempts         int        `yaml:"maxAttempts,omitempty"`
-	MaxPayloadBytes     int        `yaml:"maxPayloadBytes,omitempty"`
-	MaxInFlight         int        `yaml:"maxInFlight,omitempty"`
-	MaxInFlightPerUE    int        `yaml:"maxInFlightPerUe,omitempty"`
-	QueueSize           int        `yaml:"queueSize,omitempty"`
-	PendingDLTTLSeconds int        `yaml:"pendingDlTtlSeconds,omitempty"`
-	Mock                NAgentMock `yaml:"mock,omitempty"`
+	Enabled              bool                       `yaml:"enabled"`
+	BaseURI              string                     `yaml:"baseUri,omitempty"`
+	ConnectTimeoutMs     int                        `yaml:"connectTimeoutMs,omitempty"`
+	AttemptTimeoutMs     int                        `yaml:"attemptTimeoutMs,omitempty"`
+	TotalTimeoutMs       int                        `yaml:"totalTimeoutMs,omitempty"`
+	MaxAttempts          int                        `yaml:"maxAttempts,omitempty"`
+	MaxPayloadBytes      int                        `yaml:"maxPayloadBytes,omitempty"`
+	MaxInFlight          int                        `yaml:"maxInFlight,omitempty"`
+	MaxInFlightPerUE     int                        `yaml:"maxInFlightPerUe,omitempty"`
+	QueueSize            int                        `yaml:"queueSize,omitempty"`
+	PendingDLTTLSeconds  int                        `yaml:"pendingDlTtlSeconds,omitempty"`
+	Mock                 NAgentMock                 `yaml:"mock,omitempty"`
+	TransportPassthrough NAgentTransportPassthrough `yaml:"transportPassthrough,omitempty"`
 }
 
 type NAgentMock struct {
@@ -422,6 +423,12 @@ type NAgentMock struct {
 	ListenAddress string `yaml:"listenAddress,omitempty"`
 	DelayMs       int    `yaml:"delayMs,omitempty"`
 	Status        int    `yaml:"status,omitempty"`
+}
+
+type NAgentTransportPassthrough struct {
+	Enabled              bool  `yaml:"enabled"`
+	PayloadContainerType uint8 `yaml:"payloadContainerType,omitempty"`
+	MaxPayloadBytes      int   `yaml:"maxPayloadBytes,omitempty"`
 }
 
 func (n *NAgent) validate() (bool, error) {
@@ -452,6 +459,12 @@ func (n *NAgent) validate() (bool, error) {
 		if effective.Mock.DelayMs < 0 || effective.Mock.Status < 100 || effective.Mock.Status > 599 {
 			return false, fmt.Errorf("invalid NAgent mock response configuration")
 		}
+	}
+	if effective.TransportPassthrough.Enabled &&
+		(effective.TransportPassthrough.PayloadContainerType > 15 ||
+			effective.TransportPassthrough.MaxPayloadBytes <= 0 ||
+			effective.TransportPassthrough.MaxPayloadBytes > 65535) {
+		return false, fmt.Errorf("invalid NAgent NAS Transport passthrough configuration")
 	}
 	return true, nil
 }
@@ -497,6 +510,12 @@ func (n *NAgent) withDefaults() NAgent {
 	}
 	if result.Mock.Status == 0 {
 		result.Mock.Status = nagentDefaultMockStatus
+	}
+	if result.TransportPassthrough.PayloadContainerType == 0 {
+		result.TransportPassthrough.PayloadContainerType = 4
+	}
+	if result.TransportPassthrough.MaxPayloadBytes == 0 {
+		result.TransportPassthrough.MaxPayloadBytes = 1400
 	}
 	return result
 }

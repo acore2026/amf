@@ -106,6 +106,7 @@ func (a *AmfApp) configureNAgent() error {
 	nagentConfig := a.cfg.GetNAgentConfig()
 	if !nagentConfig.Enabled {
 		gmm.ConfigureAPIntentIntegration(false, nil, 0)
+		gmm.ConfigureNASTransportNAgentPassthrough(false, 4, nil, 0, 0)
 		return nil
 	}
 	if nagentConfig.Mock.Enabled {
@@ -148,6 +149,13 @@ func (a *AmfApp) configureNAgent() error {
 		true,
 		client,
 		time.Duration(nagentConfig.TotalTimeoutMs)*time.Millisecond,
+	)
+	gmm.ConfigureNASTransportNAgentPassthrough(
+		nagentConfig.TransportPassthrough.Enabled,
+		nagentConfig.TransportPassthrough.PayloadContainerType,
+		client,
+		time.Duration(nagentConfig.TotalTimeoutMs)*time.Millisecond,
+		nagentConfig.TransportPassthrough.MaxPayloadBytes,
 	)
 	return nil
 }
@@ -357,6 +365,7 @@ func (a *AmfApp) WaitRoutineStopped() {
 func (a *AmfApp) terminateProcedure() {
 	logger.MainLog.Infof("Terminating AMF...")
 	gmm.ConfigureAPIntentIntegration(false, nil, 0)
+	gmm.ConfigureNASTransportNAgentPassthrough(false, 4, nil, 0, 0)
 	if a.nagentDispatcher != nil {
 		a.nagentDispatcher.Stop()
 	}
