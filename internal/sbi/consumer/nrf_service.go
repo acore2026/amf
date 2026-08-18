@@ -274,7 +274,12 @@ func (s *nnrfService) SendRegisterNFInstance(ctx context.Context, nrfUri, nfInst
 				continue
 			}
 			if res.Location == "" {
-				// NFUpdate
+				// NFUpdate: NRF did not return a Location header (existing
+				// nfInstanceId), so fall back to the nfInstanceId we registered
+				// with. Without this, retrieveNfInstanceId stays empty and the
+				// AMF overwrites its NfId with "" on the caller side, which later
+				// makes UECM send an empty AmfInstanceId that UDM rejects.
+				retrieveNfInstanceId = nfInstanceId
 				finish = true
 			} else {
 				// NFRegister
