@@ -2001,7 +2001,11 @@ func AuthenticationProcedure(ue *context.AmfUe, accessType models.AccessType) (b
 			return true, nil
 		}
 	} else {
-		// Request UE's SUCI by sending identity request
+		// GUTI not recognized (e.g. after AMF restart). Request the UE's SUCI
+		// instead of rejecting, so the NAS/RAN connection stays up and the UE
+		// re-authenticates seamlessly. If the UE never answers, T3570 retransmits
+		// and finally aborts via RemoveAmfUe, so the procedure cannot hang.
+		ue.GmmLog.Warnln("UE identity (SUCI/SUPI) not available; send Identity Request for SUCI")
 		ue.IdentityRequestSendTimes++
 		gmm_message.SendIdentityRequest(ue.RanUeForAccessType(accessType), accessType, nasMessage.MobileIdentity5GSTypeSuci)
 		return false, nil
